@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "דוח זימונים",
+  "version": "1.1.0",
+  "description": "הורדת דוח זימונים מדף SharePoint לקובץ Word והפקת זימון בודד מתבנית",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "דוח זימונים",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": ["activeTab", "scripting", "tabs", "storage"],
+  "host_permissions": [
+    "https://times.rabaz.co.il/*",
+    "https://rabaz.army.idf/*",
+    "https://*.molecule.co.il/*",
+    "https://molecule.co.il/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "js/table-reader.js",
+        "js/sharepoint-field-map.js",
+        "js/sharepoint-config-store.js",
+        "js/sharepoint-lookup-service.js",
+        "content.js"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "index.umd.js",
+        "export-page.js",
+        "js/table-reader.js",
+        "js/sharepoint-field-map.js",
+        "js/sharepoint-lookup-service.js",
+        "jszip.min.js",
+        "templates/template1.docx",
+        "templates/template2.docx",
+        "templates/template3.docx"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>חלון ניהול</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --text: #ffffff;
+      --text-muted: rgba(255, 255, 255, 0.75);
+      --surface: rgba(255, 255, 255, 0.10);
+      --surface-hover: rgba(255, 255, 255, 0.18);
+      --border: rgba(255, 255, 255, 0.22);
+    }
+    body {
+      min-height: 100vh;
+      padding: 24px;
+      font-family: "Segoe UI", "Rubik", Tahoma, Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(140% 90% at 100% 0%, rgba(255, 122, 89, 0.32) 0%, transparent 55%),
+        radial-gradient(140% 90% at 0% 100%, rgba(52, 211, 153, 0.28) 0%, transparent 55%),
+        linear-gradient(140deg, #6a11cb 0%, #4361ee 50%, #2575fc 100%);
+    }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    .header h1 { font-size: 22px; font-weight: 700; }
+    .header p { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+    .card {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .card h2 { font-size: 15px; margin-bottom: 12px; }
+    label.field-label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+    .field-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
+    .field-input, .text-input {
+      flex: 1 1 0;
+      padding: 9px 11px;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+    }
+    .field-input::placeholder, .text-input::placeholder { color: rgba(255, 255, 255, 0.5); }
+    .grid-head { display: flex; gap: 10px; margin-bottom: 6px; font-size: 12px; color: var(--text-muted); }
+    .grid-head span { flex: 1 1 0; }
+    .grid-head .spacer { flex: 0 0 64px; }
+    .btn {
+      padding: 9px 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.12s ease;
+    }
+    .btn:hover { background: var(--surface-hover); transform: translateY(-1px); }
+    .btn--sm { padding: 6px 12px; font-size: 12px; flex: 0 0 64px; }
+    .btn--primary { background: linear-gradient(135deg, #2575fc, #6a11cb); }
+    .btn--danger { background: linear-gradient(135deg, #f43f5e, #b91c1c); }
+    .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    #status {
+      margin-top: 14px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      display: none;
+    }
+    #status.visible { display: block; }
+    #status.ok { background: rgba(52, 211, 153, 0.2); border: 1px solid rgba(52, 211, 153, 0.45); }
+    #status.error { background: rgba(244, 63, 94, 0.22); border: 1px solid rgba(244, 63, 94, 0.45); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>חלון ניהול</h1>
+      <p>הגדרת שמות התגים בוורד והשיוך שלהם לעמודות הטבלה</p>
+    </div>
+
+    <div class="card">
+      <h2>תבנית ההדפסה המהירה</h2>
+      <label class="field-label" for="templatePath">נתיב קובץ התבנית</label>
+      <input type="text" id="templatePath" class="text-input" placeholder="templates/template1.docx" />
+    </div>
+
+    <div class="card">
+      <h2>שדות — תג בוורד ↔ עמודה בטבלה</h2>
+      <div class="grid-head">
+        <span>שם התג בוורד (בתוך [ ])</span>
+        <span>שם העמודה בטבלה מהאתר</span>
+        <span class="spacer"></span>
+      </div>
+      <div id="fieldList"></div>
+      <button type="button" class="btn btn--sm" id="addField" style="flex:0 0 auto">+ הוסף שדה</button>
+    </div>
+
+    <div class="card">
+      <h2>שיוך מ-SharePoint</h2>
+      <label class="field-label" for="spSiteUrl">כתובת אתר SharePoint</label>
+      <input type="text" id="spSiteUrl" class="text-input" placeholder="https://rabaz.army.idf/sites/Giur/Giuron" />
+
+      <label class="field-label" for="spListTitle" style="margin-top:10px">כותרת הרשימה</label>
+      <input type="text" id="spListTitle" class="text-input" placeholder="ניהול מתגיירים" />
+
+      <div style="margin-top:12px">
+        <button type="button" class="btn btn--sm" id="loadFields" style="flex:0 0 auto">טען שדות מהרשימה</button>
+        <span id="fieldsInfo" style="font-size:12px;color:var(--text-muted);margin-right:8px"></span>
+      </div>
+
+      <h2 style="margin-top:16px;font-size:13px">התאמת רשומות (איך מקשרים שורה בטבלה לרשומה ברשימה)</h2>
+      <div class="field-row">
+        <input type="text" id="spMatchColumn" class="field-input" placeholder="עמודה בטבלה (מכילה)" />
+        <select id="spMatchField" class="field-input"></select>
+      </div>
+
+      <h2 style="margin-top:16px;font-size:13px">שיוך שדות SharePoint לתגים בוורד</h2>
+      <div class="grid-head">
+        <span>שם התג בוורד (בתוך [ ])</span>
+        <span>שדה ב-SharePoint</span>
+        <span class="spacer"></span>
+      </div>
+      <div id="spFieldList"></div>
+      <button type="button" class="btn btn--sm" id="addSpField" style="flex:0 0 auto">+ הוסף שיוך</button>
+    </div>
+
+    <div class="actions">
+      <button type="button" class="btn btn--primary" id="save">שמור הגדרות</button>
+      <button type="button" class="btn" id="exportSettings">ייצוא הגדרות</button>
+      <button type="button" class="btn" id="importSettings">ייבוא הגדרות</button>
+      <button type="button" class="btn btn--danger" id="reset">אפס לברירת מחדל</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden />
+    </div>
+
+    <div id="status"></div>
+  </div>
+
+  <datalist id="columnOptions"></datalist>
+
+  <script src="js/quick-print-config.js"></script>
+  <script src="js/quick-print-config-store.js"></script>
+  <script src="js/sharepoint-field-map.js"></script>
+  <script src="js/sharepoint-config-store.js"></script>
+  <script src="js/sharepoint-lookup-service.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

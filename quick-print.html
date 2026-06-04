@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>הדפסה מהירה</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "Segoe UI", "Rubik", Tahoma, Arial, sans-serif;
+      color: #fff;
+      background: linear-gradient(140deg, #6a11cb 0%, #4361ee 50%, #2575fc 100%);
+      direction: rtl;
+    }
+    .box {
+      width: min(420px, calc(100vw - 32px));
+      padding: 22px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      text-align: center;
+    }
+    h1 { font-size: 20px; margin-bottom: 8px; }
+    p { color: rgba(255, 255, 255, 0.78); font-size: 13px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>מכין הדפסה...</h1>
+    <p id="status">נא להמתין, חלון ההדפסה ייפתח מיד.</p>
+  </div>
+
+  <script src="jszip.min.js"></script>
+  <script src="js/docx-preview.min.js"></script>
+  <script src="js/docx-template-engine.js"></script>
+  <script src="js/placeholder-mapper.js"></script>
+  <script src="js/sharepoint-field-map.js"></script>
+  <script src="js/sharepoint-config-store.js"></script>
+  <script src="js/sharepoint-lookup-service.js"></script>
+  <script src="js/quick-print-config.js"></script>
+  <script src="js/quick-print-config-store.js"></script>
+  <script src="js/quick-print-service.js"></script>
+  <script src="quick-print.js"></script>
+</body>
+</html>
