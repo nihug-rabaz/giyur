@@ -19,13 +19,12 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["activeTab", "scripting", "tabs", "storage", "cookies"],
+  "permissions": ["activeTab", "scripting", "tabs", "storage"],
   "host_permissions": [
     "https://times.rabaz.co.il/*",
     "https://rabaz.army.idf/*",
     "https://*.molecule.co.il/*",
-    "https://molecule.co.il/*",
-    "http://localhost:3000/*"
+    "https://molecule.co.il/*"
   ],
   "content_scripts": [
     {
