@@ -92,26 +92,32 @@ class SharePointLookupService {
     return map;
   }
 
+  // Tries the richer query (with Required/ReadOnlyField) first, falling back to the minimal
+  // proven query if the server rejects the extra fields, so field loading never breaks.
   async fetchFields() {
-    if (this._canFetchViaSharePointTab()) return this._fetchFieldsViaSharePointTab();
-    const json = await this._fetchJson(this._fieldsUrl(), "SharePoint fields");
+    if (this._canFetchViaSharePointTab()) {
+      const rich = await this._fetchArrayViaTab(this._fieldsUrl(true), "SharePoint fields").catch(() => null);
+      if (rich && rich.length) return rich;
+      return this._fetchArrayViaTab(this._fieldsUrl(false), "SharePoint fields");
+    }
+    const json = await this._fetchJson(this._fieldsUrl(false), "SharePoint fields");
     const body = json.d || json;
     return body.results || body.value || [];
   }
 
-  async _fetchFieldsViaSharePointTab() {
+  async _fetchArrayViaTab(url, label) {
     const result = await this._withSharePointTab((tabId) =>
-      this._execInTab(tabId, async (endpoint) => {
+      this._execInTab(tabId, async (endpoint, errLabel) => {
         const res = await fetch(endpoint, {
           credentials: "include",
           headers: { Accept: "application/json;odata=nometadata" },
         });
         const text = await res.text();
-        if (!res.ok) throw new Error(`SharePoint fields ${res.status}`);
+        if (!res.ok) throw new Error(`${errLabel} ${res.status}`);
         if (text.trim().startsWith("<")) throw new Error("SharePoint החזיר HTML במקום JSON");
         const json = JSON.parse(text);
         return json.value || json.d?.results || [];
-      }, [this._fieldsUrl()])
+      }, [url, label])
     );
     return result || [];
   }
@@ -119,6 +125,321 @@ class SharePointLookupService {
   async fetchItems() {
     if (this._canFetchViaSharePointTab()) return this._fetchItemsViaSharePointTab();
     return this._fetchItemsDirect();
+  }
+
+  // Targeted server-side lookup by a single column; returns only matching items (scales to huge lists).
+  async searchItems(propertyName, value, type) {
+    if (!propertyName) return [];
+    const candidates = this._filterCandidates(propertyName, value, type);
+    if (this._canFetchViaSharePointTab()) return this._searchItemsViaTab(candidates);
+    return this._searchItemsDirect(candidates);
+  }
+
+  // Produces $filter variants to try; numeric columns drop the quotes, text columns keep them.
+  _filterCandidates(prop, value, type) {
+    const raw = String(value).trim();
+    const quoted = `${prop} eq '${raw.replace(/'/g, "''")}'`;
+    const unquoted = `${prop} eq ${raw}`;
+    const numericTypes = ["Number", "Counter", "Integer", "Currency"];
+    const looksNumeric = /^-?\d+(\.\d+)?$/.test(raw);
+    if (!looksNumeric) return [quoted];
+    return numericTypes.includes(type) ? [unquoted, quoted] : [quoted, unquoted];
+  }
+
+  async _searchItemsViaTab(candidates) {
+    const base = this.config.listUrl.replace(/\/$/, "");
+    const outcome = await this._withSharePointTab((tabId) =>
+      this._execInTab(tabId, async (listBase, filters) => {
+        async function readJson(url) {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 20000);
+          try {
+            const res = await fetch(url, {
+              credentials: "include",
+              headers: { Accept: "application/json;odata=nometadata" },
+              signal: controller.signal,
+            });
+            const text = await res.text();
+            if (!res.ok) throw new Error(text ? text.slice(0, 300) : `SharePoint ${res.status}`);
+            if (text.trim().startsWith("<")) throw new Error("SharePoint החזיר HTML במקום JSON");
+            return JSON.parse(text);
+          } catch (e) {
+            if (e.name === "AbortError") throw new Error("timeout");
+            throw e;
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+        let lastError = "";
+        for (const filter of filters) {
+          try {
+            const url = `${listBase}?$top=50&$filter=${encodeURIComponent(filter)}`;
+            const json = await readJson(url);
+            return { items: json.value || json.d?.results || [] };
+          } catch (e) {
+            lastError = e && e.message ? e.message : String(e);
+          }
+        }
+        return { error: lastError };
+      }, [base, candidates])
+    );
+    if (outcome?.error) {
+      const hint = outcome.error === "timeout"
+        ? "החיפוש איטי מדי (כנראה עמודה לא מאונדקסת ברשימה גדולה, או עמודה מרובת-ערכים)."
+        : outcome.error;
+      throw new Error(`חיפוש נכשל — ${hint} ודא שעמודת החיפוש היא ערך יחיד ומסומנת כ-Indexed.`);
+    }
+    return outcome?.items || [];
+  }
+
+  async _searchItemsDirect(candidates) {
+    let lastError;
+    for (const filter of candidates) {
+      try {
+        const url = `${this.config.listUrl.replace(/\/$/, "")}?$top=50&$filter=${encodeURIComponent(filter)}`;
+        const json = await this._fetchJson(url, "SharePoint search");
+        const body = json.d || json;
+        return body.results || body.value || [];
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    if (lastError) throw lastError;
+    return [];
+  }
+
+  // Returns [{ id, label }] of every item in a lookup field's target list, for dropdown population.
+  async fetchLookupOptions(fieldTitle) {
+    if (!fieldTitle || !this._canFetchViaSharePointTab()) return [];
+    const baseUrl = this._listBaseUrl();
+    const webUrl = this._siteUrlFromListUrl(this.config.listUrl);
+    const result = await this._withSharePointTab((tabId) =>
+      this._execInTab(tabId, async (base, web, title) => {
+        const flat = { Accept: "application/json;odata=nometadata" };
+        async function readJson(url) {
+          const res = await fetch(url, { credentials: "include", headers: flat });
+          const text = await res.text();
+          if (!res.ok) throw new Error(text || `SharePoint ${res.status}`);
+          return text ? JSON.parse(text) : {};
+        }
+        const metaJson = await readJson(`${base}/fields/getbyinternalnameortitle('${encodeURIComponent(title)}')?$select=LookupList,LookupField&$format=json`);
+        const meta = metaJson.d || metaJson;
+        const listGuid = String(meta.LookupList || "").replace(/[{}]/g, "");
+        const col = meta.LookupField || "Title";
+        if (!listGuid) return [];
+        const options = [];
+        let url = `${web}/_api/web/lists(guid'${listGuid}')/items?$select=Id,${encodeURIComponent(col)}&$top=5000`;
+        while (url) {
+          const json = await readJson(url);
+          (json.value || json.d?.results || []).forEach((it) => {
+            options.push({ id: it.Id ?? it.ID, label: String(it[col] ?? "") });
+          });
+          url = json["odata.nextLink"] || json.d?.__next || null;
+        }
+        return options;
+      }, [baseUrl, webUrl, fieldTitle])
+    );
+    return (result || []).filter((o) => o.id != null);
+  }
+
+  async updateItem(itemId, changes) {
+    if (!itemId || !changes || !Object.keys(changes).length) return false;
+    if (!this._canFetchViaSharePointTab()) throw new Error("עריכה דורשת לשונית SharePoint מאומתת");
+    return this._updateItemViaSharePointTab(itemId, changes);
+  }
+
+  // Creates a new list item from { internalFieldName: value } using the authenticated tab's session.
+  async createItem(fields) {
+    if (!fields || !Object.keys(fields).length) throw new Error("אין שדות ליצירת פריט");
+    if (!this._canFetchViaSharePointTab()) throw new Error("יצירה דורשת לשונית SharePoint מאומתת");
+    return this._createItemViaSharePointTab(fields);
+  }
+
+  async _createItemViaSharePointTab(fields) {
+    const itemsUrl = this.config.listUrl.replace(/\/$/, "");
+    const listBaseUrl = this._listBaseUrl();
+    const siteUrl = this._siteUrlFromListUrl(this.config.listUrl);
+    const digestUrl = `${siteUrl}/_api/contextinfo`;
+    const outcome = await this._withSharePointTab((tabId) =>
+      this._execInTab(tabId, async (createUrl, baseUrl, contextUrl, webUrl, body) => {
+        const flat = { Accept: "application/json;odata=nometadata" };
+        const out = { step: "digest", createUrl, skipped: [] };
+        async function readJson(url, headers = flat) {
+          const res = await fetch(url, { credentials: "include", headers });
+          const text = await res.text();
+          if (!res.ok) throw new Error(text || `SharePoint ${res.status}`);
+          return text ? JSON.parse(text) : {};
+        }
+        // Builds name -> { entity, type } for every field, accepting internal/static/title/entity keys.
+        async function loadFieldInfo() {
+          const urls = [
+            `${baseUrl}/fields?$select=Title,InternalName,StaticName,EntityPropertyName,TypeAsString&$format=json`,
+            `${baseUrl}/fields?$format=json`,
+          ];
+          for (const url of urls) {
+            try {
+              const json = await readJson(url);
+              const fields = json.value || json.d?.results || [];
+              const map = {};
+              fields.forEach((field) => {
+                const entity = field.EntityPropertyName;
+                if (!entity) return;
+                const info = { entity, type: field.TypeAsString || "", title: field.Title || entity };
+                [field.InternalName, field.StaticName, field.Title, field.EntityPropertyName]
+                  .filter(Boolean)
+                  .forEach((name) => { map[name] = info; });
+              });
+              if (Object.keys(map).length) return map;
+            } catch {}
+          }
+          return {};
+        }
+        // Reads the lookup field's target list GUID and display column.
+        async function lookupMeta(info) {
+          const url = `${baseUrl}/fields/getbyinternalnameortitle('${encodeURIComponent(info.title)}')?$select=LookupList,LookupField&$format=json`;
+          const d = (await readJson(url)).d || (await readJson(url));
+          return { list: String(d.LookupList || "").replace(/[{}]/g, ""), field: d.LookupField || "Title" };
+        }
+        // Resolves a lookup value to the target item id (numeric input is treated as the id directly).
+        async function resolveLookupId(meta, value) {
+          const raw = String(value).trim();
+          if (/^\d+$/.test(raw)) return Number(raw);
+          if (!meta.list) return null;
+          const col = meta.field || "Title";
+          const q = `${webUrl}/_api/web/lists(guid'${meta.list}')/items?$select=Id,${encodeURIComponent(col)}&$filter=${encodeURIComponent(col)} eq '${raw.replace(/'/g, "''")}'&$top=1`;
+          const items = (await readJson(q)).value || [];
+          return items.length ? (items[0].Id ?? items[0].ID) : null;
+        }
+        async function buildPayload(input, info) {
+          const payload = {};
+          for (const [key, value] of Object.entries(input || {})) {
+            const fi = info[key];
+            const entity = fi ? fi.entity : key;
+            const type = fi ? fi.type : "";
+            if (type === "Lookup") {
+              const id = await resolveLookupId(await lookupMeta(fi), value);
+              if (id == null) { out.skipped.push(fi ? fi.title : key); continue; }
+              payload[entity + "Id"] = id;
+            } else if (type === "LookupMulti") {
+              const meta = await lookupMeta(fi);
+              const ids = [];
+              for (const part of String(value).split(",").map((s) => s.trim()).filter(Boolean)) {
+                const id = await resolveLookupId(meta, part);
+                if (id != null) ids.push(id);
+              }
+              if (!ids.length) { out.skipped.push(fi ? fi.title : key); continue; }
+              payload[entity + "Id"] = { __metadata: { type: "Collection(Edm.Int32)" }, results: ids };
+            } else if (type === "User") {
+              const raw = String(value).trim();
+              if (!/^\d+$/.test(raw)) { out.skipped.push(fi ? fi.title : key); continue; }
+              payload[entity + "Id"] = Number(raw);
+            } else {
+              payload[entity] = value;
+            }
+          }
+          return payload;
+        }
+        try {
+          const digestRes = await fetch(contextUrl, { method: "POST", credentials: "include", headers: flat });
+          const digestText = await digestRes.text();
+          out.digestStatus = digestRes.status;
+          if (!digestRes.ok) { out.error = digestText.slice(0, 600); return out; }
+          const digestJson = JSON.parse(digestText);
+          const digest =
+            digestJson.FormDigestValue ||
+            digestJson.GetContextWebInformation?.FormDigestValue ||
+            digestJson.d?.GetContextWebInformation?.FormDigestValue;
+          if (!digest) { out.error = "לא התקבל X-RequestDigest"; return out; }
+
+          out.step = "type";
+          let typeName = "";
+          try {
+            const tRes = await fetch(`${baseUrl}?$select=ListItemEntityTypeFullName`, { credentials: "include", headers: flat });
+            const tJson = JSON.parse(await tRes.text());
+            typeName = tJson.ListItemEntityTypeFullName || tJson.d?.ListItemEntityTypeFullName || "";
+          } catch { /* proceed without explicit entity type */ }
+          out.typeName = typeName;
+
+          out.step = "fields";
+          const info = await loadFieldInfo();
+          const normalizedBody = await buildPayload(body, info);
+          out.payloadKeys = Object.keys(normalizedBody);
+
+          out.step = "create";
+          const payload = typeName ? { __metadata: { type: typeName }, ...normalizedBody } : { ...normalizedBody };
+          const res = await fetch(createUrl, {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              Accept: "application/json;odata=verbose",
+              "Content-Type": "application/json;odata=verbose",
+              "X-RequestDigest": digest,
+            },
+            body: JSON.stringify(payload),
+          });
+          const text = await res.text();
+          out.createStatus = res.status;
+          out.ok = res.ok;
+          if (!res.ok) { out.error = text.slice(0, 1000); return out; }
+          let json = {};
+          try { json = text ? JSON.parse(text) : {}; } catch { /* empty body */ }
+          out.item = json.d || json;
+          return out;
+        } catch (e) {
+          out.error = e && e.message ? e.message : String(e);
+          return out;
+        }
+      }, [itemsUrl, listBaseUrl, digestUrl, siteUrl, fields])
+    );
+
+    if (!outcome || !outcome.ok) {
+      console.error("SharePoint create failed:", outcome);
+      const where = outcome?.step || "unknown";
+      const status = outcome?.createStatus ?? outcome?.digestStatus ?? "";
+      const detail = outcome?.error || "ללא פירוט";
+      throw new Error(`כשל בשלב ${where}${status ? ` (${status})` : ""}: ${detail}`);
+    }
+    const item = outcome.item && typeof outcome.item === "object" ? outcome.item : {};
+    if (outcome.skipped?.length) item._skipped = outcome.skipped;
+    return item;
+  }
+
+  async _updateItemViaSharePointTab(itemId, changes) {
+    const itemUrl = this._itemUrl(itemId);
+    const digestUrl = `${this._siteUrlFromListUrl(this.config.listUrl)}/_api/contextinfo`;
+    return this._withSharePointTab((tabId) =>
+      this._execInTab(tabId, async (url, contextUrl, body) => {
+        const digestRes = await fetch(contextUrl, {
+          method: "POST",
+          credentials: "include",
+          headers: { Accept: "application/json;odata=nometadata" },
+        });
+        const digestText = await digestRes.text();
+        if (!digestRes.ok) throw new Error(`SharePoint digest ${digestRes.status}`);
+        const digestJson = JSON.parse(digestText);
+        const digest =
+          digestJson.FormDigestValue ||
+          digestJson.GetContextWebInformation?.FormDigestValue ||
+          digestJson.d?.GetContextWebInformation?.FormDigestValue;
+        if (!digest) throw new Error("לא התקבל X-RequestDigest מ-SharePoint");
+
+        const res = await fetch(url, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            Accept: "application/json;odata=nometadata",
+            "Content-Type": "application/json;odata=nometadata",
+            "X-RequestDigest": digest,
+            "X-HTTP-Method": "MERGE",
+            "IF-MATCH": "*",
+          },
+          body: JSON.stringify(body),
+        });
+        const text = await res.text();
+        if (!res.ok) throw new Error(text || `SharePoint update ${res.status}`);
+        return true;
+      }, [itemUrl, digestUrl, changes])
+    );
   }
 
   async _fetchItemsDirect() {
@@ -184,9 +505,19 @@ class SharePointLookupService {
     return map;
   }
 
-  _fieldsUrl() {
-    const base = this.config.listUrl.replace(/\/items\/?(\?.*)?$/i, "");
-    return `${base}/fields?$select=Title,InternalName,StaticName,Hidden,TypeAsString&$format=json`;
+  _listBaseUrl() {
+    return this.config.listUrl.replace(/\/items\/?(\?.*)?$/i, "");
+  }
+
+  _fieldsUrl(rich) {
+    const select = rich
+      ? "Title,InternalName,StaticName,EntityPropertyName,Hidden,TypeAsString,Required,ReadOnlyField"
+      : "Title,InternalName,StaticName,Hidden,TypeAsString";
+    return `${this._listBaseUrl()}/fields?$select=${select}&$format=json`;
+  }
+
+  _itemUrl(itemId) {
+    return `${this.config.listUrl.replace(/\/$/, "")}(${encodeURIComponent(itemId)})`;
   }
 
   async _fetchJson(url, label) {
@@ -269,6 +600,11 @@ class SharePointLookupService {
     } catch {
       return "";
     }
+  }
+
+  // Public accessor for reading a normalized field value from a fetched item.
+  readValue(item, internalName) {
+    return this._readField(item, internalName);
   }
 
   // Resolves a field value, falling back to a fuzzy key match when SharePoint renamed the internal name.

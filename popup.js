@@ -252,6 +252,14 @@ class AdminGate {
   }
 }
 
+class OpenPageButton {
+  constructor(id, page) {
+    document.getElementById(id)?.addEventListener("click", () =>
+      chrome.tabs.create({ url: chrome.runtime.getURL(page) })
+    );
+  }
+}
+
 const status = new StatusBar(document.getElementById("status"));
 new CreateSummonsButton({ id: "createSummonsBtn", status, busyText: "יוצר מזומנים..." });
 new OpenSummonsPageButton({ id: "openSummonsPageBtn", status, busyText: "פותח דף זימונים..." });
@@ -262,3 +270,4 @@ new QuickPrintButton({ id: "quickPrintT3Btn", status, busyText: "מכין הדפ
 new DownloadReportButton({ id: "downloadBtn", status, busyText: "מייצא..." });
 new AdminUnlock("appLogo");
 new AdminGate({ toggleId: "openAdminBtn", gateId: "adminGate", inputId: "adminPass", enterId: "adminEnter", status });
+new OpenPageButton("spLookupBtn", "sp-lookup.html");

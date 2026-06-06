@@ -4,197 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>זימונים</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --grad-1: #6a11cb;
-      --grad-2: #2575fc;
-      --text: #ffffff;
-      --text-muted: rgba(255, 255, 255, 0.75);
-      --surface: rgba(255, 255, 255, 0.10);
-      --surface-hover: rgba(255, 255, 255, 0.18);
-      --border: rgba(255, 255, 255, 0.22);
-    }
-
-    html { background: var(--grad-1); }
-
-    body {
-      width: 320px;
-      margin: 0;
-      padding: 18px 16px 14px;
-      direction: rtl;
-      font-family: "Segoe UI", "Rubik", Tahoma, Arial, sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(140% 90% at 100% 0%, rgba(255, 122, 89, 0.32) 0%, transparent 55%),
-        radial-gradient(140% 90% at 0% 100%, rgba(52, 211, 153, 0.28) 0%, transparent 55%),
-        linear-gradient(140deg, #6a11cb 0%, #4361ee 50%, #2575fc 100%);
-    }
-
-    .header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-
-    .logo {
-      flex: 0 0 36px;
-      width: 36px;
-      height: 36px;
-      border-radius: 11px;
-      background: rgba(255, 255, 255, 0.18);
-      border: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-    }
-    .logo svg { width: 20px; height: 20px; display: block; }
-
-    .titles { display: flex; flex-direction: column; min-width: 0; }
-    .title { font-size: 15px; font-weight: 700; }
-    .subtitle { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-
-    .stack { display: flex; flex-direction: column; gap: 9px; }
-
-    .btn {
-      display: flex;
-      align-items: center;
-      gap: 11px;
-      width: 100%;
-      padding: 11px 12px;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: var(--surface);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 14px;
-      font-weight: 600;
-      text-align: right;
-      cursor: pointer;
-      transition: background 0.18s ease, transform 0.15s ease, border-color 0.18s ease;
-    }
-    .btn:hover {
-      background: var(--surface-hover);
-      border-color: rgba(255, 255, 255, 0.4);
-      transform: translateY(-1px);
-    }
-    .btn:active { transform: translateY(0); }
-    .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
-
-    .btn .icon {
-      flex: 0 0 32px;
-      width: 32px;
-      height: 32px;
-      border-radius: 9px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.22);
-    }
-    .btn .icon svg { width: 16px; height: 16px; display: block; }
-
-    .btn .label {
-      flex: 1 1 auto;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      line-height: 1.2;
-    }
-    .btn .label .main {
-      font-size: 13.5px;
-      font-weight: 700;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .btn .label .sub {
-      font-size: 11px;
-      font-weight: 500;
-      color: var(--text-muted);
-      margin-top: 2px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .btn--accent  .icon { background: linear-gradient(135deg, #ff7a59, #ff4d8d); }
-    .btn--primary .icon { background: linear-gradient(135deg, #2575fc, #6a11cb); }
-    .btn--success .icon { background: linear-gradient(135deg, #34d399, #059669); }
-
-    #status {
-      margin-top: 11px;
-      padding: 8px 11px;
-      font-size: 12px;
-      text-align: center;
-      border-radius: 9px;
-      min-height: 16px;
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      color: var(--text-muted);
-      transition: opacity 0.2s ease;
-      opacity: 0;
-    }
-    #status:not(:empty) { opacity: 1; }
-    #status.ok    { color: #d1fae5; background: rgba(52, 211, 153, 0.20); border-color: rgba(52, 211, 153, 0.45); }
-    #status.error { color: #ffe4e6; background: rgba(244, 63, 94, 0.22);  border-color: rgba(244, 63, 94, 0.45); }
-    #status.info  { color: #e0f2fe; background: rgba(59, 130, 246, 0.22); border-color: rgba(59, 130, 246, 0.45); }
-
-    .footer {
-      margin-top: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 10px;
-      color: rgba(255, 255, 255, 0.5);
-      letter-spacing: 0.4px;
-    }
-    .settings-link {
-      background: none;
-      border: none;
-      color: rgba(255, 255, 255, 0.6);
-      font-family: inherit;
-      font-size: 11px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .settings-link:hover { color: #fff; }
-
-    .admin-gate { display: flex; gap: 6px; margin-top: 9px; }
-    .admin-gate[hidden] { display: none; }
-    .admin-gate input {
-      flex: 1 1 auto;
-      padding: 8px 10px;
-      border-radius: 9px;
-      border: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.1);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 12px;
-    }
-    .admin-gate input::placeholder { color: rgba(255, 255, 255, 0.5); }
-    .admin-gate button {
-      padding: 8px 14px;
-      border-radius: 9px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .admin-gate button:hover { background: var(--surface-hover); }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .btn.is-loading .icon svg { animation: spin 0.9s linear infinite; }
-  </style>
+  <link rel="stylesheet" href="css/app.css" />
 </head>
-<body>
+<body class="popup">
   <div class="header">
     <div class="logo" id="appLogo" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -278,6 +90,19 @@
       <span class="label">
         <span class="main">להדפסת זימוני בריתות</span>
         <span class="sub">הדפסה מהירה לכל השורות</span>
+      </span>
+    </button>
+
+    <button type="button" id="spLookupBtn" class="btn">
+      <span class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="11" cy="11" r="6" stroke="#fff" stroke-width="2"/>
+          <path d="M20 20l-3.5-3.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="label">
+        <span class="main">חיפוש פריט ברשימה</span>
+        <span class="sub">שליפת פרטים לפי מזהה</span>
       </span>
     </button>
 

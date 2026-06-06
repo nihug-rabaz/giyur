@@ -1,6 +1,6 @@
 const SHAREPOINT_LOOKUP = {
-  listUrl:
-    "https://rabaz.army.idf/sites/Giur/Giuron/_api/web/Lists/getByTitle('%D7%A0%D7%99%D7%94%D7%95%D7%9C%20%D7%9E%D7%AA%D7%92%D7%99%D7%99%D7%A8%D7%99%D7%9D')/items",
+  siteUrl: "https://www.molecule.co.il/legacy-deployed/max-app",
+  listTitle: "רשימת בסיס",
   join: {
     tableColumnDisplay: "שיוך לתהליך",
     listFieldDisplay: "שם התהליך",

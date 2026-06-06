@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>רשימת פריטים לייצוא</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body class="page">
+  <div class="wrap">
+    <div class="header">
+      <h1>רשימת פריטים לייצוא</h1>
+      <p>הזן בכל שורה מזהה — שאר הפרטים יוטענו אוטומטית מהרשימה ב-SharePoint, ואז אפשר לייצא הכל לקבצים</p>
+    </div>
+
+    <div class="card">
+      <div class="controls">
+        <label for="searchField">המזהה מתאים לשדה</label>
+        <select id="searchField"></select>
+        <button type="button" class="btn btn--sm" id="reloadFields">טען שדות מחדש</button>
+      </div>
+      <div id="status"></div>
+      <div class="toolbar">
+        <button type="button" class="btn btn--primary" id="newItem">פריט חדש</button>
+        <button type="button" class="btn btn--sm" id="addRow">+ הוסף שורה</button>
+        <button type="button" class="btn btn--sm" id="clearRows">נקה הכל</button>
+        <button type="button" class="btn btn--success" id="saveAll">שמור הכל</button>
+        <button type="button" class="btn btn--primary" id="createAll">צור הכל</button>
+        <span style="flex:1 1 auto"></span>
+        <button type="button" class="btn btn--accent" id="exportT1">ייצוא תבנית 1</button>
+        <button type="button" class="btn btn--accent" id="exportT2">ייצוא תבנית 2</button>
+        <button type="button" class="btn btn--accent" id="exportT3">ייצוא תבנית 3</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="itemsTable">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <div class="empty" id="emptyState" hidden>אין שורות. לחץ "הוסף שורה".</div>
+    </div>
+  </div>
+
+  <script src="jszip.min.js"></script>
+  <script src="js/sharepoint-field-map.js"></script>
+  <script src="js/sharepoint-config-store.js"></script>
+  <script src="js/sharepoint-lookup-service.js"></script>
+  <script src="js/sp-lookup-service.js"></script>
+  <script src="js/docx-template-engine.js"></script>
+  <script src="js/placeholder-mapper.js"></script>
+  <script src="js/quick-print-config.js"></script>
+  <script src="js/quick-print-config-store.js"></script>
+  <script src="js/quick-print-service.js"></script>
+  <script src="sp-lookup.js"></script>
+</body>
+</html>

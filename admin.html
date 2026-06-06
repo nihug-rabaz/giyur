@@ -4,82 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>חלון ניהול</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --text: #ffffff;
-      --text-muted: rgba(255, 255, 255, 0.75);
-      --surface: rgba(255, 255, 255, 0.10);
-      --surface-hover: rgba(255, 255, 255, 0.18);
-      --border: rgba(255, 255, 255, 0.22);
-    }
-    body {
-      min-height: 100vh;
-      padding: 24px;
-      font-family: "Segoe UI", "Rubik", Tahoma, Arial, sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(140% 90% at 100% 0%, rgba(255, 122, 89, 0.32) 0%, transparent 55%),
-        radial-gradient(140% 90% at 0% 100%, rgba(52, 211, 153, 0.28) 0%, transparent 55%),
-        linear-gradient(140deg, #6a11cb 0%, #4361ee 50%, #2575fc 100%);
-    }
-    .wrap { max-width: 760px; margin: 0 auto; }
-    .header h1 { font-size: 22px; font-weight: 700; }
-    .header p { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
-    .card {
-      margin-top: 16px;
-      padding: 16px;
-      border-radius: 14px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-    }
-    .card h2 { font-size: 15px; margin-bottom: 12px; }
-    label.field-label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
-    .field-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
-    .field-input, .text-input {
-      flex: 1 1 0;
-      padding: 9px 11px;
-      border-radius: 9px;
-      border: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.1);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 13px;
-    }
-    .field-input::placeholder, .text-input::placeholder { color: rgba(255, 255, 255, 0.5); }
-    .grid-head { display: flex; gap: 10px; margin-bottom: 6px; font-size: 12px; color: var(--text-muted); }
-    .grid-head span { flex: 1 1 0; }
-    .grid-head .spacer { flex: 0 0 64px; }
-    .btn {
-      padding: 9px 16px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: var(--surface);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s ease, transform 0.12s ease;
-    }
-    .btn:hover { background: var(--surface-hover); transform: translateY(-1px); }
-    .btn--sm { padding: 6px 12px; font-size: 12px; flex: 0 0 64px; }
-    .btn--primary { background: linear-gradient(135deg, #2575fc, #6a11cb); }
-    .btn--danger { background: linear-gradient(135deg, #f43f5e, #b91c1c); }
-    .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
-    #status {
-      margin-top: 14px;
-      padding: 10px 14px;
-      border-radius: 10px;
-      font-size: 13px;
-      display: none;
-    }
-    #status.visible { display: block; }
-    #status.ok { background: rgba(52, 211, 153, 0.2); border: 1px solid rgba(52, 211, 153, 0.45); }
-    #status.error { background: rgba(244, 63, 94, 0.22); border: 1px solid rgba(244, 63, 94, 0.45); }
-  </style>
+  <link rel="stylesheet" href="css/app.css" />
 </head>
-<body>
+<body class="page">
   <div class="wrap">
     <div class="header">
       <h1>חלון ניהול</h1>

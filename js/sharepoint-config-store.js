@@ -6,8 +6,8 @@ class SharePointConfigStore {
     const lookup = window.SHAREPOINT_LOOKUP || {};
     const join = lookup.join || {};
     return {
-      siteUrl: lookup.siteUrl || "https://rabaz.army.idf/sites/Giur/Giuron",
-      listTitle: lookup.listTitle || "ניהול מתגיירים",
+      siteUrl: lookup.siteUrl || "https://www.molecule.co.il/legacy-deployed/max-app",
+      listTitle: lookup.listTitle || "רשימת בסיס",
       matchTableColumn: join.tableColumnDisplay || "שיוך לתהליך",
       matchListFieldInternal: join.listFieldInternal || "",
       matchListFieldDisplay: join.listFieldDisplay || "שם התהליך",

@@ -1,0 +1,13 @@
+{
+  "name": "sharepoint-create-item-backend",
+  "version": "1.0.0",
+  "description": "Minimal Node.js backend that creates items in a SharePoint 2013 list via REST",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "optionalDependencies": {
+    "httpntlm": "^1.8.10"
+  }
+}
