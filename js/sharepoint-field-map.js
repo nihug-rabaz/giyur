@@ -1,16 +1,16 @@
 const SHAREPOINT_LOOKUP = {
-  siteUrl: "https://www.molecule.co.il/legacy-deployed/max-app",
-  listTitle: "רשימת בסיס",
+  siteUrl: "https://rabaz.army.idf/sites/Giur/Giuron",
+  listTitle: "ניהול מתגיירים",
   join: {
-    tableColumnDisplay: "שיוך לתהליך",
-    listFieldDisplay: "שם התהליך",
-    listFieldInternal: "",
+    tableColumnDisplay: "שיוך לתהליך (מ.א מתגייר/ת)",
+    listFieldDisplay: "שם התהליך (מ.א מתגייר/ת)",
+    listFieldInternal: "Title",
   },
 };
 
 const SHAREPOINT_FIELD_MAP = {
-  "שם פרטי": "OData_x05e9x05ddx0020x05e4_x05",
-  "שם משפחה": "OData_x05e9x05ddx0020x05de_x05",
+  "שם משפחה": "_x05e9__x05dd__x0020__x05de__x05",
+  "שם פרטי": "_x05e9__x05dd__x0020__x05e4__x05",
 };
 
 window.SHAREPOINT_LOOKUP = SHAREPOINT_LOOKUP;

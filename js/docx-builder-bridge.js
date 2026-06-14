@@ -1,0 +1,1 @@
+window.docxBuilder = window.docx;

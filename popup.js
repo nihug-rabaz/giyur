@@ -113,47 +113,6 @@ class OpenSummonsPageButton extends ActionButton {
   }
 }
 
-class TableExportButton extends ActionButton {
-  async handle() {
-    const tab = await TabService.getActive();
-    if (!tab?.id) return this.status.set("לא נמצאה לשונית פעילה", "error");
-    try {
-      const response = await chrome.tabs.sendMessage(tab.id, { action: "scrapeTable" });
-      if (!response?.ok) {
-        this.status.set(response?.error || "לא נמצאה טבלת זימונים", "error");
-        return;
-      }
-      await chrome.storage.local.set({ summonsTableData: response.data });
-      await this.onTableReady();
-    } catch {
-      this.status.set("פתח דף עם טבלת זימונים ונסה שוב", "error");
-    }
-  }
-
-  async onTableReady() { throw new Error("onTableReady() must be implemented"); }
-}
-
-class SingleExportButton extends TableExportButton {
-  async onTableReady() {
-    await chrome.tabs.create({ url: chrome.runtime.getURL("single-export.html") });
-    this.status.set("נפתח דף הפקה", "ok");
-  }
-}
-
-class QuickPrintButton extends TableExportButton {
-  constructor(options) {
-    super(options);
-    this.templatePath = options.templatePath || "";
-  }
-
-  async onTableReady() {
-    const base = chrome.runtime.getURL("quick-print.html");
-    const url = this.templatePath ? `${base}?template=${encodeURIComponent(this.templatePath)}` : base;
-    await chrome.tabs.create({ url });
-    this.status.set("נפתח דף הדפסה", "ok");
-  }
-}
-
 class DownloadReportButton extends ActionButton {
   async handle() {
     const tab = await TabService.getActive();
@@ -263,11 +222,8 @@ class OpenPageButton {
 const status = new StatusBar(document.getElementById("status"));
 new CreateSummonsButton({ id: "createSummonsBtn", status, busyText: "יוצר מזומנים..." });
 new OpenSummonsPageButton({ id: "openSummonsPageBtn", status, busyText: "פותח דף זימונים..." });
-new SingleExportButton({ id: "singleExportBtn", status, busyText: "קורא טבלה..." });
-new QuickPrintButton({ id: "quickPrintT1Btn", status, busyText: "מכין הדפסה..." });
-new QuickPrintButton({ id: "quickPrintT2Btn", status, busyText: "מכין הדפסה...", templatePath: "templates/template2.docx" });
-new QuickPrintButton({ id: "quickPrintT3Btn", status, busyText: "מכין הדפסה...", templatePath: "templates/template3.docx" });
 new DownloadReportButton({ id: "downloadBtn", status, busyText: "מייצא..." });
 new AdminUnlock("appLogo");
 new AdminGate({ toggleId: "openAdminBtn", gateId: "adminGate", inputId: "adminPass", enterId: "adminEnter", status });
+new OpenPageButton("printHubBtn", "hub.html");
 new OpenPageButton("spLookupBtn", "sp-lookup.html");

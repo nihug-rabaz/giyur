@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>זימונים לישיבות</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body class="page">
+  <div class="wrap">
+    <div class="header">
+      <h1>זימונים לישיבות</h1>
+      <p>בחר סוג זימון (טאב), סנן לפי טווח תאריכים, והדפס את התבנית המתאימה לכל מי שמופיע בטבלה</p>
+    </div>
+
+    <div class="card">
+      <div class="tabs" id="typeTabs"></div>
+      <div class="controls">
+        <label for="dateFrom">מתאריך</label>
+        <input type="date" id="dateFrom" />
+        <label for="dateTo">עד תאריך</label>
+        <input type="date" id="dateTo" />
+        <button type="button" class="btn btn--primary" id="searchBtn">הצג זימונים</button>
+        <button type="button" class="btn btn--sm" id="reloadFields">טען שדות מחדש</button>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="peopleMode" style="flex:0 0 auto;width:auto" />
+          הצג תיקי אנשים מרשימת הבסיס (במקום זימונים)
+        </label>
+      </div>
+      <div class="loc-filter" id="locationFilter" hidden></div>
+      <div id="status"></div>
+      <div class="toolbar">
+        <span id="resultCount" style="font-size:12px;color:var(--text-muted);font-weight:600"></span>
+        <span style="flex:1 1 auto"></span>
+        <button type="button" class="btn btn--success" id="downloadReport">הורד דוח Word</button>
+        <span class="print-buttons" id="printButtons"></span>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="summonsTable">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <div class="empty" id="emptyState">בחר טווח תאריכים ולחץ "הצג זימונים".</div>
+    </div>
+  </div>
+
+  <script src="jszip.min.js"></script>
+  <script src="index.umd.js"></script>
+  <script src="js/docx-builder-bridge.js"></script>
+  <script src="js/docx-preview.min.js"></script>
+  <script src="js/sharepoint-field-map.js"></script>
+  <script src="js/sharepoint-config-store.js"></script>
+  <script src="js/sharepoint-lookup-service.js"></script>
+  <script src="js/related-list-service.js"></script>
+  <script src="js/docx-template-engine.js"></script>
+  <script src="js/table-report-service.js"></script>
+  <script src="js/placeholder-mapper.js"></script>
+  <script src="js/quick-print-config.js"></script>
+  <script src="js/quick-print-config-store.js"></script>
+  <script src="js/quick-print-service.js"></script>
+  <script src="js/related-list-page.js"></script>
+  <script src="summons.js"></script>
+</body>
+</html>

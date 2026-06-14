@@ -135,6 +135,25 @@ class SharePointLookupService {
     return this._searchItemsDirect(candidates);
   }
 
+  // Runs an arbitrary OData $filter server-side (e.g. a date range) and returns up to `top` items.
+  async queryItems(filter, top = 200) {
+    if (!filter) return [];
+    if (this._canFetchViaSharePointTab()) return this._searchItemsViaTab([filter], top);
+    return this._searchItemsDirect([filter], top);
+  }
+
+  // Fetches list items by their ids, chunked into OR-filters so big id sets stay within URL limits.
+  async fetchItemsByIds(ids, chunkSize = 30) {
+    const unique = [...new Set((ids || []).map(Number).filter((n) => !Number.isNaN(n)))];
+    if (!unique.length) return [];
+    const out = [];
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      const filter = unique.slice(i, i + chunkSize).map((id) => `Id eq ${id}`).join(" or ");
+      out.push(...(await this.queryItems(filter, chunkSize)));
+    }
+    return out;
+  }
+
   // Produces $filter variants to try; numeric columns drop the quotes, text columns keep them.
   _filterCandidates(prop, value, type) {
     const raw = String(value).trim();
@@ -146,10 +165,10 @@ class SharePointLookupService {
     return numericTypes.includes(type) ? [unquoted, quoted] : [quoted, unquoted];
   }
 
-  async _searchItemsViaTab(candidates) {
+  async _searchItemsViaTab(candidates, top = 50) {
     const base = this.config.listUrl.replace(/\/$/, "");
     const outcome = await this._withSharePointTab((tabId) =>
-      this._execInTab(tabId, async (listBase, filters) => {
+      this._execInTab(tabId, async (listBase, filters, topN) => {
         async function readJson(url) {
           const controller = new AbortController();
           const timer = setTimeout(() => controller.abort(), 20000);
@@ -173,7 +192,7 @@ class SharePointLookupService {
         let lastError = "";
         for (const filter of filters) {
           try {
-            const url = `${listBase}?$top=50&$filter=${encodeURIComponent(filter)}`;
+            const url = `${listBase}?$top=${topN}&$filter=${encodeURIComponent(filter)}`;
             const json = await readJson(url);
             return { items: json.value || json.d?.results || [] };
           } catch (e) {
@@ -181,7 +200,7 @@ class SharePointLookupService {
           }
         }
         return { error: lastError };
-      }, [base, candidates])
+      }, [base, candidates, top])
     );
     if (outcome?.error) {
       const hint = outcome.error === "timeout"
@@ -192,11 +211,11 @@ class SharePointLookupService {
     return outcome?.items || [];
   }
 
-  async _searchItemsDirect(candidates) {
+  async _searchItemsDirect(candidates, top = 50) {
     let lastError;
     for (const filter of candidates) {
       try {
-        const url = `${this.config.listUrl.replace(/\/$/, "")}?$top=50&$filter=${encodeURIComponent(filter)}`;
+        const url = `${this.config.listUrl.replace(/\/$/, "")}?$top=${top}&$filter=${encodeURIComponent(filter)}`;
         const json = await this._fetchJson(url, "SharePoint search");
         const body = json.d || json;
         return body.results || body.value || [];
@@ -240,6 +259,23 @@ class SharePointLookupService {
       }, [baseUrl, webUrl, fieldTitle])
     );
     return (result || []).filter((o) => o.id != null);
+  }
+
+  // Returns the allowed values of a Choice field (for building filter checkboxes / tabs).
+  async fetchFieldChoices(fieldNameOrTitle) {
+    if (!fieldNameOrTitle || !this._canFetchViaSharePointTab()) return [];
+    const base = this._listBaseUrl();
+    const result = await this._withSharePointTab((tabId) =>
+      this._execInTab(tabId, async (baseUrl, field) => {
+        const url = `${baseUrl}/fields/getbyinternalnameortitle('${encodeURIComponent(field)}')?$select=Choices&$format=json`;
+        const res = await fetch(url, { credentials: "include", headers: { Accept: "application/json;odata=nometadata" } });
+        const text = await res.text();
+        if (!res.ok) throw new Error(text || `SharePoint ${res.status}`);
+        const body = text ? JSON.parse(text) : {};
+        return body.Choices?.results || body.Choices || [];
+      }, [base, fieldNameOrTitle])
+    );
+    return result || [];
   }
 
   async updateItem(itemId, changes) {
@@ -605,6 +641,14 @@ class SharePointLookupService {
   // Public accessor for reading a normalized field value from a fetched item.
   readValue(item, internalName) {
     return this._readField(item, internalName);
+  }
+
+  // Turns SharePoint ISO date/datetime strings into a readable local date for display.
+  static formatValue(value) {
+    if (typeof value !== "string") return value;
+    if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/.test(value)) return value;
+    const ms = Date.parse(value);
+    return Number.isNaN(ms) ? value : new Date(ms).toLocaleDateString("he-IL");
   }
 
   // Resolves a field value, falling back to a fuzzy key match when SharePoint renamed the internal name.

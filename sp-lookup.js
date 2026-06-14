@@ -71,7 +71,8 @@ class ItemRow {
       const item = matches[0];
       this.item = item || null;
       this.page.columns.forEach((c) => {
-        const value = item ? this.page.lookup.valueOf(item, c.internal) : "";
+        const raw = item ? this.page.lookup.valueOf(item, c.internal) : "";
+        const value = SharePointLookupService.formatValue(raw);
         this.values[c.tag] = value;
         this.inputs[c.tag].value = value;
       });
@@ -353,9 +354,9 @@ class SharePointListBuilderPage {
     document.getElementById("createAll").addEventListener("click", () => this._createAll());
     document.getElementById("newItem").addEventListener("click", () => new NewItemForm(this).open());
     this.fieldSelect.addEventListener("change", () => this._updateIdHeader());
-    document.getElementById("exportT1").addEventListener("click", () => this._export(1));
-    document.getElementById("exportT2").addEventListener("click", () => this._export(2));
-    document.getElementById("exportT3").addEventListener("click", () => this._export(3));
+    document.getElementById("exportT1").addEventListener("click", () => this._print(1));
+    document.getElementById("exportT2").addEventListener("click", () => this._print(2));
+    document.getElementById("exportT3").addEventListener("click", () => this._print(3));
   }
 
   searchInternal() { return this.fieldSelect.value; }
@@ -395,22 +396,34 @@ class SharePointListBuilderPage {
     if (match && fields.some((f) => f.internal === match)) this.fieldSelect.value = match;
   }
 
-  // Columns = configured Word-tag fields first (keeping their export tags), then every other list
-  // field, so a loaded item shows all of its values.
+  // Columns honor the admin-selected display fields (empty = all). Word-tagged fields keep their
+  // export tag and are always included so printing keeps working.
   _computeColumns() {
     const byInternal = new Map(this.lookup.fields.map((f) => [f.internal, f]));
-    const configured = Object.entries(this.lookup.config?.fieldMap || {})
-      .map(([tag, internal]) => ({ tag, internal, readOnly: Boolean(byInternal.get(internal)?.readOnly) }));
-    const usedInternals = new Set(configured.map((c) => c.internal));
-    const usedTags = new Set(configured.map((c) => c.tag));
-    const rest = [];
-    this.lookup.fields.forEach((f) => {
-      if (usedInternals.has(f.internal) || usedTags.has(f.title)) return;
-      usedInternals.add(f.internal);
-      usedTags.add(f.title);
-      rest.push({ tag: f.title, internal: f.internal, readOnly: Boolean(f.readOnly) });
-    });
-    this.columns = [...configured, ...rest];
+    const tagByInternal = new Map(
+      Object.entries(this.lookup.config?.fieldMap || {}).map(([tag, internal]) => [internal, tag])
+    );
+    const display = (this.lookup.config?.displayFields || [])
+      .filter((id) => byInternal.has(id) || tagByInternal.has(id));
+
+    const chosen = display.length ? [...display] : this.lookup.fields.map((f) => f.internal);
+    tagByInternal.forEach((_tag, internal) => { if (!chosen.includes(internal)) chosen.push(internal); });
+
+    const seenTags = new Set();
+    this.columns = chosen
+      .map((internal) => {
+        const f = byInternal.get(internal);
+        return {
+          tag: tagByInternal.get(internal) || f?.title || internal,
+          internal,
+          readOnly: Boolean(f?.readOnly),
+        };
+      })
+      .filter((c) => {
+        if (seenTags.has(c.tag)) return false;
+        seenTags.add(c.tag);
+        return true;
+      });
   }
 
   _idLabel() {
@@ -475,23 +488,23 @@ class SharePointListBuilderPage {
     this.emptyState.hidden = this.rows.length > 0;
   }
 
-  async _export(templateNum) {
+  async _print(templateNum) {
     await Promise.all(this.rows.map((r) => r.fill()));
     const idLabel = this._idLabel();
     const rows = this.rows.filter((r) => r.idInput.value.trim()).map((r) => r.exportRow(idLabel));
-    if (!rows.length) return this._setStatus("אין שורות עם מזהה לייצוא", "error");
+    if (!rows.length) return this._setStatus("אין שורות עם מזהה להדפסה", "error");
 
-    this._setStatus("מייצא קבצים...", "info");
+    this._setStatus("מכין הדפסה...", "info");
     try {
       const templatePath = await this._templatePath(templateNum);
       const service = new QuickPrintService(
-        { templatePath, outputMode: "docx", fields: [] },
+        { templatePath, outputMode: "browserPrint", fields: [] },
         this._exportHeaders(idLabel)
       );
       await service.printAll(rows);
-      this._setStatus(`יוצאו ${rows.length} קבצים (תבנית ${templateNum})`, "ok");
+      this._setStatus(`נשלח להדפסה (תבנית ${templateNum})`, "ok");
     } catch (err) {
-      this._setStatus(`ייצוא נכשל — ${err?.message || "בדוק את התבנית"}`, "error");
+      this._setStatus(`הדפסה נכשלה — ${err?.message || "בדוק את התבנית"}`, "error");
     }
   }
 

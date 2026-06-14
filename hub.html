@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>הדפסות מרוכזות</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body class="hub-page">
+  <button type="button" class="hub-toggle" id="hubToggle" aria-expanded="false" aria-controls="hubTopbar">
+    <span class="hub-toggle-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="hub-toggle-text" id="hubCurrent">זימונים לישיבות</span>
+  </button>
+
+  <header class="hub-topbar" id="hubTopbar">
+    <div class="hub-brand">
+      <div class="hub-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M7 8V4h10v4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="4" y="8" width="16" height="8" rx="2" stroke="#fff" stroke-width="2"/>
+          <path d="M7 14h10v6H7z" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="hub-brand-text">
+        <span class="hub-title">הדפסות מרוכזות</span>
+        <span class="hub-sub">זימונים וישיבות בית דין</span>
+      </div>
+    </div>
+
+    <nav class="hub-nav">
+      <button type="button" class="hub-nav-item is-active" data-target="summons" data-src="summons.html" data-name="זימונים לישיבות">
+        <span class="hub-nav-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3.5" y="5" width="17" height="15" rx="3" stroke="currentColor" stroke-width="2"/>
+            <path d="M3.5 9.5h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="hub-nav-label">
+          <span class="hub-nav-main">זימונים לישיבות</span>
+          <span class="hub-nav-desc">סינון לפי תאריך והדפסת תבניות</span>
+        </span>
+      </button>
+
+      <button type="button" class="hub-nav-item" data-target="sessions" data-src="sessions.html" data-name="ישיבות בית דין">
+        <span class="hub-nav-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M5 21V7l7-4 7 4v14" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M9 21v-6h6v6" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <span class="hub-nav-label">
+          <span class="hub-nav-main">ישיבות בית דין</span>
+          <span class="hub-nav-desc">הצגה והדפסת ממ״ח</span>
+        </span>
+      </button>
+    </nav>
+  </header>
+
+  <div class="hub-scrim" id="hubScrim"></div>
+
+  <main class="hub-main">
+    <iframe class="hub-frame is-active" id="frame-summons" title="זימונים לישיבות"></iframe>
+    <iframe class="hub-frame" id="frame-sessions" title="ישיבות בית דין"></iframe>
+  </main>
+
+  <script src="hub.js"></script>
+</body>
+</html>

@@ -6,60 +6,109 @@
   <title>חלון ניהול</title>
   <link rel="stylesheet" href="css/app.css" />
 </head>
-<body class="page">
+<body class="page admin-lab">
+  <canvas class="lab-bg" id="moleculeCanvas" aria-hidden="true"></canvas>
+  <div class="lab-scanlines" aria-hidden="true"></div>
+  <span class="lab-corner">extension</span>
+
   <div class="wrap">
-    <div class="header">
-      <h1>חלון ניהול</h1>
-      <p>הגדרת שמות התגים בוורד והשיוך שלהם לעמודות הטבלה</p>
+    <div class="header lab-header">
+      <div class="lab-badge" aria-hidden="true">
+        <span class="lab-radiate"></span>
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 18h8"/>
+          <path d="M3 22h18"/>
+          <path d="M14 22a7 7 0 1 0 0-14h-1"/>
+          <path d="M9 14h2"/>
+          <path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/>
+          <path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/>
+        </svg>
+      </div>
+      <div class="lab-titles">
+        <h1>מעבדת מולקולה</h1>
+      </div>
     </div>
 
-    <div class="card">
-      <h2>תבנית ההדפסה המהירה</h2>
-      <label class="field-label" for="templatePath">נתיב קובץ התבנית</label>
-      <input type="text" id="templatePath" class="text-input" placeholder="templates/template1.docx" />
-    </div>
+    <nav class="lab-tabs" id="labTabs">
+      <button type="button" class="lab-tab is-active" data-target="panel-print">
+        <span class="lab-tab-dot"></span> הדפסה מהירה
+      </button>
+      <button type="button" class="lab-tab" data-target="panel-sharepoint">
+        <span class="lab-tab-dot"></span> SharePoint
+      </button>
+      <button type="button" class="lab-tab" data-target="panel-summons">
+        <span class="lab-tab-dot"></span> זימונים
+      </button>
+      <button type="button" class="lab-tab" data-target="panel-sessions">
+        <span class="lab-tab-dot"></span> ישיבות בית דין
+      </button>
+    </nav>
 
-    <div class="card">
-      <h2>שדות — תג בוורד ↔ עמודה בטבלה</h2>
-      <div class="grid-head">
-        <span>שם התג בוורד (בתוך [ ])</span>
-        <span>שם העמודה בטבלה מהאתר</span>
-        <span class="spacer"></span>
-      </div>
-      <div id="fieldList"></div>
-      <button type="button" class="btn btn--sm" id="addField" style="flex:0 0 auto">+ הוסף שדה</button>
-    </div>
-
-    <div class="card">
-      <h2>שיוך מ-SharePoint</h2>
-      <label class="field-label" for="spSiteUrl">כתובת אתר SharePoint</label>
-      <input type="text" id="spSiteUrl" class="text-input" placeholder="https://rabaz.army.idf/sites/Giur/Giuron" />
-
-      <label class="field-label" for="spListTitle" style="margin-top:10px">כותרת הרשימה</label>
-      <input type="text" id="spListTitle" class="text-input" placeholder="ניהול מתגיירים" />
-
-      <div style="margin-top:12px">
-        <button type="button" class="btn btn--sm" id="loadFields" style="flex:0 0 auto">טען שדות מהרשימה</button>
-        <span id="fieldsInfo" style="font-size:12px;color:var(--text-muted);margin-right:8px"></span>
+    <section class="lab-panel is-active" id="panel-print" data-panel>
+      <div class="card">
+        <h2>תבנית ההדפסה המהירה</h2>
+        <label class="field-label" for="templatePath">נתיב קובץ התבנית</label>
+        <input type="text" id="templatePath" class="text-input" placeholder="templates/template1.docx" />
       </div>
 
-      <h2 style="margin-top:16px;font-size:13px">התאמת רשומות (איך מקשרים שורה בטבלה לרשומה ברשימה)</h2>
-      <div class="field-row">
-        <input type="text" id="spMatchColumn" class="field-input" placeholder="עמודה בטבלה (מכילה)" />
-        <select id="spMatchField" class="field-input"></select>
+      <div class="card">
+        <h2>שדות — תג בוורד ↔ עמודה בטבלה</h2>
+        <div class="grid-head">
+          <span>שם התג בוורד (בתוך [ ])</span>
+          <span>שם העמודה בטבלה מהאתר</span>
+          <span class="spacer"></span>
+        </div>
+        <div id="fieldList"></div>
+        <button type="button" class="btn btn--sm" id="addField" style="flex:0 0 auto">+ הוסף שדה</button>
+      </div>
+    </section>
+
+    <section class="lab-panel" id="panel-sharepoint" data-panel>
+      <div class="card">
+        <h2>שיוך מ-SharePoint</h2>
+        <label class="field-label" for="spSiteUrl">כתובת אתר SharePoint</label>
+        <input type="text" id="spSiteUrl" class="text-input" placeholder="https://rabaz.army.idf/sites/Giur/Giuron" />
+
+        <label class="field-label" for="spListTitle" style="margin-top:10px">כותרת הרשימה</label>
+        <input type="text" id="spListTitle" class="text-input" placeholder="ניהול מתגיירים" />
+
+        <div style="margin-top:12px">
+          <button type="button" class="btn btn--sm" id="loadFields" style="flex:0 0 auto">טען שדות מהרשימה</button>
+          <span id="fieldsInfo" style="font-size:12px;color:var(--text-muted);margin-right:8px"></span>
+        </div>
+
+        <h2 style="margin-top:16px;font-size:13px">התאמת רשומות (איך מקשרים שורה בטבלה לרשומה ברשימה)</h2>
+        <div class="field-row">
+          <input type="text" id="spMatchColumn" class="field-input" placeholder="עמודה בטבלה (מכילה)" />
+          <select id="spMatchField" class="field-input"></select>
+        </div>
+
+        <h2 style="margin-top:16px;font-size:13px">שיוך שדות SharePoint לתגים בוורד</h2>
+        <div class="grid-head">
+          <span>שם התג בוורד (בתוך [ ])</span>
+          <span>שדה ב-SharePoint</span>
+          <span class="spacer"></span>
+        </div>
+        <div id="spFieldList"></div>
+        <button type="button" class="btn btn--sm" id="addSpField" style="flex:0 0 auto">+ הוסף שיוך</button>
       </div>
 
-      <h2 style="margin-top:16px;font-size:13px">שיוך שדות SharePoint לתגים בוורד</h2>
-      <div class="grid-head">
-        <span>שם התג בוורד (בתוך [ ])</span>
-        <span>שדה ב-SharePoint</span>
-        <span class="spacer"></span>
+      <div class="card">
+        <h2>שדות שיוצגו במסך "חיפוש פריט ברשימה"</h2>
+        <p class="mapping-empty" style="margin-bottom:10px">הוסף שדות וסדר אותם בעזרת החצים. הסדר כאן הוא סדר העמודות במסך. אם לא נבחר דבר — יוצגו כל השדות.</p>
+        <div id="spDisplayFields"></div>
       </div>
-      <div id="spFieldList"></div>
-      <button type="button" class="btn btn--sm" id="addSpField" style="flex:0 0 auto">+ הוסף שיוך</button>
-    </div>
+    </section>
 
-    <div class="actions">
+    <section class="lab-panel" id="panel-summons" data-panel>
+      <div class="card" id="summonsEditor"></div>
+    </section>
+
+    <section class="lab-panel" id="panel-sessions" data-panel>
+      <div class="card" id="sessionsEditor"></div>
+    </section>
+
+    <div class="actions lab-actions">
       <button type="button" class="btn btn--primary" id="save">שמור הגדרות</button>
       <button type="button" class="btn" id="exportSettings">ייצוא הגדרות</button>
       <button type="button" class="btn" id="importSettings">ייבוא הגדרות</button>
@@ -78,5 +127,6 @@
   <script src="js/sharepoint-config-store.js"></script>
   <script src="js/sharepoint-lookup-service.js"></script>
   <script src="admin.js"></script>
+  <script src="admin-ui.js"></script>
 </body>
 </html>
