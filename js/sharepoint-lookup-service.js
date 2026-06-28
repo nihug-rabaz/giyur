@@ -142,6 +142,14 @@ class SharePointLookupService {
     return this._searchItemsDirect([filter], top);
   }
 
+  // Tries several $filter strings in order until one succeeds (for lookup id column name variants).
+  async queryItemsFirst(filters, top = 200) {
+    const list = (filters || []).filter(Boolean);
+    if (!list.length) return [];
+    if (this._canFetchViaSharePointTab()) return this._searchItemsViaTab(list, top);
+    return this._searchItemsDirect(list, top);
+  }
+
   // Fetches list items by their ids, chunked into OR-filters so big id sets stay within URL limits.
   async fetchItemsByIds(ids, chunkSize = 30) {
     const unique = [...new Set((ids || []).map(Number).filter((n) => !Number.isNaN(n)))];
@@ -547,8 +555,8 @@ class SharePointLookupService {
 
   _fieldsUrl(rich) {
     const select = rich
-      ? "Title,InternalName,StaticName,EntityPropertyName,Hidden,TypeAsString,Required,ReadOnlyField"
-      : "Title,InternalName,StaticName,Hidden,TypeAsString";
+      ? "Title,InternalName,StaticName,EntityPropertyName,Hidden,TypeAsString,DisplayFormat,Required,ReadOnlyField"
+      : "Title,InternalName,StaticName,Hidden,TypeAsString,DisplayFormat";
     return `${this._listBaseUrl()}/fields?$select=${select}&$format=json`;
   }
 
@@ -643,12 +651,50 @@ class SharePointLookupService {
     return this._readField(item, internalName);
   }
 
-  // Turns SharePoint ISO date/datetime strings into a readable local date for display.
-  static formatValue(value) {
-    if (typeof value !== "string") return value;
-    if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/.test(value)) return value;
-    const ms = Date.parse(value);
-    return Number.isNaN(ms) ? value : new Date(ms).toLocaleDateString("he-IL");
+  static isDateOnlyField(field) {
+    const type = field?.TypeAsString || field?.type || "";
+    if (type === "Date") return true;
+    if (type !== "DateTime") return false;
+    const format = field?.DisplayFormat ?? field?.displayFormat;
+    return format === 0 || format === "DateOnly";
+  }
+
+  static formatValue(value, options = {}) {
+    if (value === true) return "כן";
+    if (value === false) return "לא";
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      const lower = trimmed.toLowerCase();
+      if (lower === "true" || lower === "yes" || lower === "1") return "כן";
+      if (lower === "false" || lower === "no" || lower === "0") return "לא";
+      if (!SharePointLookupService._looksLikeIsoDate(trimmed)) return value;
+      const ms = Date.parse(trimmed);
+      if (Number.isNaN(ms)) return value;
+      if (options.dateOnly || options.fieldType === "Date" || SharePointLookupService._isDateOnlyIso(trimmed)) {
+        return new Date(ms).toLocaleDateString("he-IL");
+      }
+      const d = new Date(ms);
+      return d.toLocaleString("he-IL", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+    }
+    return value;
+  }
+
+  static _looksLikeIsoDate(value) {
+    return /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/.test(value);
+  }
+
+  static _isDateOnlyIso(value) {
+    if (!value.includes("T")) return true;
+    const match = value.match(/T(\d{2}):(\d{2}):(\d{2})/);
+    if (!match) return true;
+    return match[1] === "00" && match[2] === "00" && match[3] === "00";
   }
 
   // Resolves a field value, falling back to a fuzzy key match when SharePoint renamed the internal name.

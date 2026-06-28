@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>הדפסת פריט בודד</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body class="page">
+  <div class="wrap">
+    <div class="header">
+      <h1>הדפסת פריט בודד</h1>
+      <p>חפש תיק, בחר אותו, בחר זימונים או ישיבות בית דין — וראה רק את הפריטים המקושרים לתיק, והדפס תבנית לכל אחד</p>
+    </div>
+
+    <div class="card">
+      <div class="controls">
+        <label for="searchField">חפש תיק לפי</label>
+        <select id="searchField"></select>
+        <input type="text" id="searchValue" placeholder="הקלד מזהה / ערך לחיפוש" />
+        <button type="button" class="btn btn--primary" id="searchBtn">חפש תיק</button>
+        <button type="button" class="btn btn--sm" id="reloadFields">טען שדות מחדש</button>
+      </div>
+      <div id="status"></div>
+      <div class="toolbar">
+        <span id="baseCount" style="font-size:12px;color:var(--text-muted);font-weight:600"></span>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="baseTable">
+        <thead id="baseHead"></thead>
+        <tbody id="baseBody"></tbody>
+      </table>
+      <div class="empty" id="baseEmpty">חפש תיק כדי להתחיל.</div>
+    </div>
+
+    <div class="card item-linked" id="linkedCard" hidden>
+      <div class="item-linked__head">
+        <h2 id="linkedTitle"></h2>
+        <p id="linkedSubtitle"></p>
+      </div>
+      <div class="tabs item-print-profiles" id="profileTabs"></div>
+      <div class="tabs" id="typeTabs" hidden></div>
+      <div id="linkedStatus"></div>
+      <div class="table-wrap" id="linkedWrap" hidden>
+        <table id="linkedTable">
+          <thead id="linkedHead"></thead>
+          <tbody id="linkedBody"></tbody>
+        </table>
+        <div class="empty" id="linkedEmpty"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="jszip.min.js"></script>
+  <script src="index.umd.js"></script>
+  <script src="js/docx-builder-bridge.js"></script>
+  <script src="js/docx-preview.min.js"></script>
+  <script src="js/sharepoint-field-map.js"></script>
+  <script src="js/sharepoint-config-store.js"></script>
+  <script src="js/sharepoint-lookup-service.js"></script>
+  <script src="js/sp-lookup-service.js"></script>
+  <script src="js/related-list-service.js"></script>
+  <script src="js/related-list-row-model.js"></script>
+  <script src="js/docx-template-engine.js"></script>
+  <script src="js/placeholder-mapper.js"></script>
+  <script src="js/system-date-service.js"></script>
+  <script src="js/quick-print-config.js"></script>
+  <script src="js/quick-print-config-store.js"></script>
+  <script src="js/quick-print-service.js"></script>
+  <script src="js/template-action-modal.js"></script>
+  <script src="js/row-selection-bar.js"></script>
+  <script src="js/item-print-page.js"></script>
+  <script src="item-print.js"></script>
+</body>
+</html>

@@ -92,14 +92,19 @@ class DocxTemplateEngine {
 
   _applyReplacements(xml, replacements) {
     let result = xml;
-    replacements.forEach((value, key) => {
-      result = result.split(key).join(value);
-    });
+    [...replacements.entries()]
+      .sort((a, b) => b[0].length - a[0].length)
+      .forEach(([key, value]) => {
+        result = result.split(key).join(value);
+      });
     return result;
   }
 }
 
 class DocxPrintRenderer {
+  static A4_WIDTH_PX = 794;
+  static A4_HEIGHT_PX = 1123;
+
   static async extractPlainText(docxBlob) {
     const buffer = await docxBlob.arrayBuffer();
     const zip = await JSZip.loadAsync(buffer);
@@ -155,41 +160,62 @@ class DocxPrintRenderer {
       )
       .join("");
     return `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8"/><title></title><style>
-      @page { size: auto; margin: 0; }
-      html, body { margin: 0; padding: 0; }
-      .qp-break { page-break-after: always; }
-      .docx-wrapper { background: transparent !important; padding: 0 !important; }
-      .docx { box-shadow: none !important; margin: 0 auto !important; }
+      @page { size: 210mm 297mm; margin: 0; }
+      html, body { margin: 0; padding: 0; width: 210mm; }
+      body { direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .qp-break { page-break-after: always; break-after: page; }
+      .qp-doc { width: ${this.A4_WIDTH_PX}px; margin: 0 auto; }
+      .docx-wrapper { background: transparent !important; padding: 0 !important; margin: 0 !important; }
+      .docx { box-shadow: none !important; margin: 0 auto !important; width: ${this.A4_WIDTH_PX}px !important; max-width: ${this.A4_WIDTH_PX}px !important; }
+      section.docx { width: ${this.A4_WIDTH_PX}px !important; max-width: ${this.A4_WIDTH_PX}px !important; box-sizing: border-box; }
+      @media print {
+        html, body { width: 210mm; margin: 0; padding: 0; }
+        .qp-doc, .docx-wrapper, .docx, section.docx {
+          width: 210mm !important;
+          max-width: 210mm !important;
+          transform: none !important;
+          zoom: 1 !important;
+        }
+        .docx-wrapper { padding: 0 !important; background: none !important; }
+      }
     </style></head><body>${body}</body></html>`;
   }
 
   // Shared print path: renders filled DOCX blobs to styled HTML (keeping the template design),
   // falling back to plain text only if the local renderer is unavailable.
   static async printBlobs(blobs) {
-    if (window.docx?.renderAsync) return this._printStyled(blobs);
+    if (window.docx?.renderAsync) {
+      try {
+        return await this._printStyled(blobs);
+      } catch (err) {
+        console.warn("Styled DOCX print failed, falling back to plain text", err);
+      }
+    }
     return this._printPlain(blobs);
   }
 
   static async _printStyled(blobs) {
     const host = document.createElement("div");
-    host.style.cssText = "position:fixed;left:-99999px;top:0;width:0;height:0;overflow:hidden";
+    host.style.cssText = `position:fixed;left:-12000px;top:0;width:${this.A4_WIDTH_PX}px;min-height:${this.A4_HEIGHT_PX}px;overflow:hidden;visibility:hidden;pointer-events:none`;
     document.body.appendChild(host);
     try {
       const pages = [];
       for (const blob of blobs) {
         const container = document.createElement("div");
+        container.style.width = `${this.A4_WIDTH_PX}px`;
         host.appendChild(container);
         await window.docx.renderAsync(blob, container, container, {
           className: "docx",
-          inWrapper: true,
+          inWrapper: false,
           ignoreWidth: false,
           ignoreHeight: false,
           breakPages: true,
           useBase64URL: true,
+          hideWrapperOnPrint: true,
         });
         pages.push(container.innerHTML);
       }
-      this.printHtml(this.buildStyledHtml(pages));
+      await this.printHtml(this.buildStyledHtml(pages));
     } finally {
       host.remove();
     }
@@ -198,22 +224,56 @@ class DocxPrintRenderer {
   static async _printPlain(blobs) {
     const sections = [];
     for (const blob of blobs) sections.push(await this.extractPlainText(blob));
-    this.printHtml(this.buildPrintHtml(sections));
+    await this.printHtml(this.buildPrintHtml(sections));
+  }
+
+  static _waitForPrintAssets(doc, timeoutMs = 12000) {
+    const images = [...(doc.images || [])];
+    if (!images.length) return Promise.resolve();
+    return Promise.all(
+      images.map(
+        (img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise((resolve) => {
+                const done = () => resolve();
+                img.addEventListener("load", done, { once: true });
+                img.addEventListener("error", done, { once: true });
+                setTimeout(done, timeoutMs);
+              })
+      )
+    );
   }
 
   static printHtml(html) {
-    const frame = document.createElement("iframe");
-    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
-    document.body.appendChild(frame);
-    const doc = frame.contentDocument || frame.contentWindow.document;
-    doc.open();
-    doc.write(html);
-    doc.close();
-    frame.onload = () => {
-      frame.contentWindow.focus();
-      frame.contentWindow.print();
-      setTimeout(() => frame.remove(), 1000);
-    };
+    return new Promise((resolve) => {
+      const frame = document.createElement("iframe");
+      frame.style.cssText = `position:fixed;left:-12000px;top:0;width:${this.A4_WIDTH_PX}px;height:${this.A4_HEIGHT_PX}px;border:0;visibility:hidden`;
+      document.body.appendChild(frame);
+      const win = frame.contentWindow;
+      const doc = frame.contentDocument || win.document;
+      doc.open();
+      doc.write(html);
+      doc.close();
+      let printed = false;
+      const finish = () => {
+        if (printed) return;
+        printed = true;
+        try {
+          win.focus();
+          win.print();
+        } catch (err) {
+          console.warn("Browser print failed", err);
+        }
+        setTimeout(() => {
+          frame.remove();
+          resolve();
+        }, 2000);
+      };
+      const schedulePrint = () => this._waitForPrintAssets(doc).then(finish);
+      frame.onload = () => schedulePrint();
+      setTimeout(() => schedulePrint(), 1200);
+    });
   }
 }
 

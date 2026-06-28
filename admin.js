@@ -98,6 +98,152 @@ class OrderedFieldPicker {
   }
 }
 
+class MixedColumnPicker {
+  constructor(container) {
+    this.container = container;
+    this.listFields = [];
+    this.baseFields = [];
+    this.layout = [];
+  }
+
+  setListFields(fields) {
+    this.listFields = fields || [];
+    this.render();
+  }
+
+  setBaseFields(fields) {
+    this.baseFields = fields || [];
+    this.render();
+  }
+
+  setLayout(layout) {
+    this.layout = SharePointConfigStore.normalizeColumnLayout(layout);
+    this.render();
+  }
+
+  getLayout() {
+    return this.layout.map((entry) => ({ source: entry.source, internal: entry.internal }));
+  }
+
+  render() {
+    this.container.innerHTML = "";
+    this.container.appendChild(this._addRow());
+
+    const list = document.createElement("div");
+    list.className = "display-list";
+    if (!this.layout.length) {
+      const hint = document.createElement("p");
+      hint.className = "mapping-empty";
+      hint.textContent = "לא נבחרו עמודות — יוצגו כל שדות הרשימה. הוסף עמודות מרשימת הזימונים/ישיבות ומרשימת הבסיס בכל סדר.";
+      list.appendChild(hint);
+    } else {
+      this.layout.forEach((entry, index) => list.appendChild(this._row(entry, index)));
+    }
+    this.container.appendChild(list);
+  }
+
+  _addRow() {
+    const row = document.createElement("div");
+    row.className = "field-row";
+
+    const sourceSelect = document.createElement("select");
+    sourceSelect.className = "field-input column-source";
+    sourceSelect.append(new Option("רשימת זימונים/ישיבות", "list"), new Option("רשימת בסיס", "base"));
+
+    const fieldSelect = document.createElement("select");
+    fieldSelect.className = "field-input column-field";
+
+    const syncFields = () => this._populateFieldSelect(fieldSelect, sourceSelect.value);
+    sourceSelect.addEventListener("change", syncFields);
+    syncFields();
+
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "btn btn--sm";
+    add.textContent = "+ הוסף";
+    add.addEventListener("click", () => {
+      if (!fieldSelect.value) return;
+      this._add({ source: sourceSelect.value, internal: fieldSelect.value });
+    });
+
+    row.append(sourceSelect, fieldSelect, add);
+    return row;
+  }
+
+  _populateFieldSelect(select, source) {
+    const fields = source === "base" ? this.baseFields : this.listFields;
+    select.innerHTML = "";
+    select.appendChild(new Option("— בחר שדה —", ""));
+    fields
+      .filter((field) => !this._isUsed(source, field.internal))
+      .forEach((field) => select.appendChild(new Option(field.title, field.internal)));
+  }
+
+  _row(entry, index) {
+    const row = document.createElement("div");
+    row.className = "field-row";
+
+    const badge = document.createElement("span");
+    badge.className = "display-name";
+    badge.style.minWidth = "88px";
+    badge.textContent = entry.source === "base" ? "בסיס" : "רשימה";
+
+    const name = document.createElement("span");
+    name.className = "display-name";
+    name.textContent = this._fieldTitle(entry);
+
+    const up = this._iconBtn("↑", () => this._move(index, -1));
+    up.disabled = index === 0;
+    const down = this._iconBtn("↓", () => this._move(index, 1));
+    down.disabled = index === this.layout.length - 1;
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn btn--sm btn--danger";
+    remove.textContent = "הסר";
+    remove.addEventListener("click", () => this._remove(index));
+
+    row.append(badge, name, up, down, remove);
+    return row;
+  }
+
+  _iconBtn(text, onClick) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn--sm";
+    btn.textContent = text;
+    btn.addEventListener("click", onClick);
+    return btn;
+  }
+
+  _fieldTitle(entry) {
+    const pool = entry.source === "base" ? this.baseFields : this.listFields;
+    return pool.find((field) => field.internal === entry.internal)?.title || entry.internal;
+  }
+
+  _isUsed(source, internal) {
+    return this.layout.some((entry) => entry.source === source && entry.internal === internal);
+  }
+
+  _add(entry) {
+    if (this._isUsed(entry.source, entry.internal)) return;
+    this.layout.push({ source: entry.source === "base" ? "base" : "list", internal: entry.internal });
+    this.render();
+  }
+
+  _remove(index) {
+    this.layout.splice(index, 1);
+    this.render();
+  }
+
+  _move(index, dir) {
+    const next = index + dir;
+    if (next < 0 || next >= this.layout.length) return;
+    [this.layout[index], this.layout[next]] = [this.layout[next], this.layout[index]];
+    this.render();
+  }
+}
+
 // Self-contained editor for one secondary related list (summons / sessions).
 // Builds its own card UI and reads/writes the prefixed config keys for that profile.
 class RelatedListEditor {
@@ -134,28 +280,38 @@ class RelatedListEditor {
     this.lookupFieldEl = this._select();
     this.container.append(this._label("שדה קישור לרשומת התיק (Lookup)"), this.lookupFieldEl);
 
-    this.container.append(this._heading(this.labels.displayTitle, true));
-    const displayHost = document.createElement("div");
-    this.container.append(displayHost);
-    this.displayPicker = new OrderedFieldPicker(displayHost);
+    this.container.append(this._heading("עמודות הטבלה — סדר ומיקום", true));
+    this.container.append(this._para('הוסף עמודות מרשימת הזימונים/ישיבות ומרשימת הבסיס בכל סדר. שדות הבסיס מוצגים לפי שדה הקישור (Lookup). טען שדות בסיס בכרטיס "שיוך מ-SharePoint".'));
+    const layoutHost = document.createElement("div");
+    this.container.append(layoutHost);
+    this.columnLayoutPicker = new MixedColumnPicker(layoutHost);
 
-    this.container.append(this._heading(this.labels.baseTitle, true));
-    this.container.append(this._para('בחר שדות מרשימת הבסיס (טען אותם בכרטיס "שיוך מ-SharePoint") שיופיעו באותה שורה, מותאמים לפי שדה הקישור.'));
-    const baseHost = document.createElement("div");
-    this.container.append(baseHost);
-    this.basePicker = new OrderedFieldPicker(baseHost);
-
-    this.basePositionEl = this._select();
-    this.basePositionEl.append(new Option("לפני עמודות הרשימה", "before"), new Option("אחרי עמודות הרשימה", "after"));
-    this.container.append(this._label("מיקום עמודות הבסיס ביחס לעמודות הרשימה"), this.basePositionEl);
+    this._buildTemplateFieldMapSection();
 
     if (this.useTypeTabs) this._buildTypeSection();
     else this._buildTemplatesSection();
 
     this.locationFieldEl = this._select();
     this.container.append(this._heading("עמודת מיקום (אפשרות/בדיקת מידע, לא חובה)", true));
-    this.container.append(this._para('תומך בעמודת "אפשרות" (Choice) או "בדיקת מידע" (Lookup). אם תוגדר, יופיע מסנן מיקומים, ובייצוא ל-Word עם כמה מיקומים תיווצר טבלה נפרדת לכל מיקום.'));
+    this.container.append(this._para('תומך בעמודת "אפשרות" (Choice) או "בדיקת מידע" (Lookup). אם תוגדר, יופיע מסנן מיקומים, ובדוח Word תיווצר טבלה נפרדת לכל שילוב של יום (תאריך לועזי), אב״ד ומיקום.'));
     this.container.append(this.locationFieldEl);
+
+    this.judgeFieldEl = this._select();
+    this.container.append(this._heading("שדה אב״ד לדוח Word (לא חובה)", true));
+    this.container.append(this._para('בחר את השדה שמכיל את שם אב״ד. בדוח Word תיווצר טבלה נפרדת לכל שילוב של יום, אב״ד ומיקום הזימון. אם הטבלה ארוכה — Word ימשיך אותה בעמוד הבא.'));
+    this.container.append(this.judgeFieldEl);
+  }
+
+  _buildTemplateFieldMapSection() {
+    this.container.append(this._heading("מיפוי תגי תבנית Word", true));
+    this.container.append(this._para("כאן מקשרים תג שמופיע בתבנית בתוך [ ] לשדה מהרשימה, מרשימת הבסיס, או לשדות מערכת. לתאריכים: קשר 3 תגים נפרדים — יום, חודש, שנה (לועזי / עברי / הדפסה). אם לא מוגדר מיפוי, ההדפסה תמשיך לעבוד לפי שמות כותרות הטבלה."));
+    const head = document.createElement("div");
+    head.className = "grid-head";
+    head.append(this._span("שם התג בוורד"), this._span("מקור השדה"), this._span("שדה למילוי"), this._span(""));
+    this.templateFieldMapEl = document.createElement("div");
+    const addBtn = this._btn("+ הוסף מיפוי לתבנית");
+    addBtn.addEventListener("click", () => this._addTemplateFieldMapRow({}));
+    this.container.append(head, this.templateFieldMapEl, addBtn);
   }
 
   // Tab-driven types: a Choice column whose values become tabs, each with its own templates.
@@ -196,11 +352,14 @@ class RelatedListEditor {
     this.host._populateSelect(this.dateFieldEl, raw[this._key("DateFieldInternal")], this.fields);
     this.host._populateSelect(this.lookupFieldEl, raw[this._key("LookupFieldInternal")], this.fields);
     this.host._populateSelect(this.locationFieldEl, raw[this._key("LocationFieldInternal")], this.fields);
-    this.displayPicker.setFields(this.fields);
-    this.displayPicker.setOrder(raw[this._key("DisplayFields")] || []);
-    this.basePicker.setFields(this.host.getBaseFields());
-    this.basePicker.setOrder(raw[this._key("BaseDisplayFields")] || []);
-    this.basePositionEl.value = raw[this._key("BasePosition")] || "before";
+    this.host._populateSelect(this.judgeFieldEl, raw[this._key("JudgeFieldInternal")], this.fields);
+    this.columnLayoutPicker.setListFields(this.fields);
+    this.columnLayoutPicker.setBaseFields(this.host.getBaseFields());
+    this.columnLayoutPicker.setLayout(SharePointConfigStore.resolveColumnLayout(raw, this.prefix));
+    this.templateFieldMapEl.innerHTML = "";
+    const fieldMap = SharePointConfigStore.normalizeTemplateFieldMap(raw[this._key("TemplateFieldMap")]);
+    Object.entries(fieldMap).forEach(([tag, field]) => this._addTemplateFieldMapRow({ tag, ...field }));
+    if (!Object.keys(fieldMap).length) this._addTemplateFieldMapRow({});
 
     if (this.useTypeTabs) {
       this.host._populateSelect(this.typeFieldEl, raw[this._key("TypeFieldInternal")], this.fields);
@@ -218,21 +377,28 @@ class RelatedListEditor {
 
   // Returns this profile's settings as prefixed config keys.
   collect() {
+    const columnLayout = this.columnLayoutPicker.getLayout();
     return {
       [this._key("ListTitle")]: this.listTitleEl.value.trim(),
       [this._key("DateFieldInternal")]: this.dateFieldEl.value,
       [this._key("LookupFieldInternal")]: this.lookupFieldEl.value,
-      [this._key("DisplayFields")]: this.displayPicker.getOrder(),
-      [this._key("BaseDisplayFields")]: this.basePicker.getOrder(),
-      [this._key("BasePosition")]: this.basePositionEl.value,
+      [this._key("ColumnLayout")]: columnLayout,
+      [this._key("DisplayFields")]: columnLayout.filter((col) => col.source === "list").map((col) => col.internal),
+      [this._key("BaseDisplayFields")]: columnLayout.filter((col) => col.source === "base").map((col) => col.internal),
+      [this._key("BasePosition")]: "before",
       [this._key("TypeFieldInternal")]: this.useTypeTabs ? this.typeFieldEl.value : "",
       [this._key("Types")]: this.useTypeTabs ? this._collectTypes() : [],
       [this._key("Templates")]: this.useTypeTabs ? [] : this._collectTemplates(),
       [this._key("LocationFieldInternal")]: this.locationFieldEl.value,
+      [this._key("JudgeFieldInternal")]: this.judgeFieldEl.value,
+      [this._key("TemplateFieldMap")]: this._collectTemplateFieldMap(),
     };
   }
 
-  setBaseFields(fields) { this.basePicker.setFields(fields); }
+  setBaseFields(fields) {
+    this.columnLayoutPicker.setBaseFields(fields);
+    this._refreshTemplateFieldRows();
+  }
 
   async loadFields() {
     const siteUrl = this.host.getSiteUrl();
@@ -241,10 +407,11 @@ class RelatedListEditor {
     this._setInfo(this.fieldsInfoEl, "טוען שדות...");
     try {
       this.fields = await this.host._loadFieldList(siteUrl, listTitle);
-      [this.dateFieldEl, this.lookupFieldEl, this.typeFieldEl, this.locationFieldEl]
+      [this.dateFieldEl, this.lookupFieldEl, this.typeFieldEl, this.locationFieldEl, this.judgeFieldEl]
         .filter(Boolean)
         .forEach((sel) => this.host._populateSelect(sel, sel.value, this.fields));
-      this.displayPicker.setFields(this.fields);
+      this.columnLayoutPicker.setListFields(this.fields);
+      this._refreshTemplateFieldRows();
       this._setInfo(this.fieldsInfoEl, `נטענו ${this.fields.length} שדות`);
     } catch (err) {
       console.error(err);
@@ -309,6 +476,42 @@ class RelatedListEditor {
     return row;
   }
 
+  _addTemplateFieldMapRow(field = {}) {
+    const row = document.createElement("div");
+    row.className = "field-row template-map-row";
+    const tagInput = this._input("field-input template-tag", "שם התג בוורד", field.tag || "");
+    const sourceSelect = this._select();
+    sourceSelect.classList.add("template-source");
+    sourceSelect.append(new Option("רשימת הזימונים/ישיבות", "list"), new Option("רשימת הבסיס", "base"), new Option("שדות מערכת (אוטומטי)", "system"));
+    sourceSelect.value = field.source === "base" ? "base" : field.source === "system" ? "system" : "list";
+    const fieldSelect = this._select();
+    fieldSelect.classList.add("template-field");
+    row.append(tagInput, sourceSelect, fieldSelect, this.host._removeBtn(row));
+    sourceSelect.addEventListener("change", () => this._populateTemplateFieldSelect(fieldSelect, sourceSelect.value, fieldSelect.value));
+    this.templateFieldMapEl.appendChild(row);
+    this._populateTemplateFieldSelect(fieldSelect, sourceSelect.value, field.internal || "");
+  }
+
+  _populateTemplateFieldSelect(select, source, selected) {
+    if (source === "system") {
+      select.innerHTML = "";
+      SystemDateService.FIELDS.forEach((field) => select.append(new Option(field.title, field.internal)));
+      select.value = selected || SystemDateService.FIELDS[0].internal;
+      return;
+    }
+    const fields = source === "base" ? this.host.getBaseFields() : this.fields;
+    this.host._populateSelect(select, selected, fields);
+  }
+
+  _refreshTemplateFieldRows() {
+    if (!this.templateFieldMapEl) return;
+    this.templateFieldMapEl.querySelectorAll(".template-map-row").forEach((row) => {
+      const source = row.querySelector(".template-source").value;
+      const select = row.querySelector(".template-field");
+      this._populateTemplateFieldSelect(select, source, select.value);
+    });
+  }
+
   _collectTypes() {
     const types = [];
     this.typesEl.querySelectorAll(".type-card").forEach((card) => {
@@ -335,6 +538,18 @@ class RelatedListEditor {
     return templates;
   }
 
+  _collectTemplateFieldMap() {
+    const map = {};
+    this.templateFieldMapEl.querySelectorAll(".template-map-row").forEach((row) => {
+      const tag = row.querySelector(".template-tag").value.trim();
+      const source = row.querySelector(".template-source").value;
+      const internal = row.querySelector(".template-field").value;
+      if (!tag || !internal) return;
+      map[tag] = source === "system" ? { source: "system", internal } : { source, internal };
+    });
+    return map;
+  }
+
   // ---- Small DOM builders ----
 
   _input(className, placeholder, value) { return this.host._input(className, placeholder, value); }
@@ -359,6 +574,12 @@ class RelatedListEditor {
     p.style.marginBottom = "10px";
     p.textContent = text;
     return p;
+  }
+
+  _span(text) {
+    const span = document.createElement("span");
+    span.textContent = text;
+    return span;
   }
 
   _label(text) {
@@ -389,6 +610,145 @@ class RelatedListEditor {
   _setInfo(el, text) { el.textContent = text; }
 }
 
+class ItemPrintTemplatesEditor {
+  constructor(container, host) {
+    this.container = container;
+    this.host = host;
+    this.baseFields = [];
+    this._build();
+  }
+
+  _build() {
+    this.container.innerHTML = "";
+    const title = document.createElement("h2");
+    title.textContent = "תבניות הדפסה לפריט בודד (מסך הדפסה לפריט)";
+    const intro = document.createElement("p");
+    intro.className = "mapping-empty";
+    intro.style.marginBottom = "10px";
+    intro.textContent = "הוסף תבניות שיופיעו בתפריט בעת בחירת תיק — לצד זימונים וישיבות. לחיצה על תבנית תפתח ישירות את חלון ההדפסה/ייצוא, ללא מעבר לרשימה מקושרת. קשר תגי Word לשדות מרשימת הבסיס או לשדות מערכת.";
+    this.templatesEl = document.createElement("div");
+    this.templatesEl.style.marginTop = "10px";
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "btn btn--sm";
+    addBtn.textContent = "+ הוסף תבנית";
+    addBtn.addEventListener("click", () => this._addCard({}));
+    this.container.append(title, intro, this.templatesEl, addBtn);
+  }
+
+  load(raw) {
+    this.templatesEl.innerHTML = "";
+    const templates = SharePointConfigStore.normalizeItemPrintTemplates(raw.itemPrintTemplates);
+    templates.forEach((template) => this._addCard(template));
+    if (!templates.length) this._addCard({});
+  }
+
+  collect() {
+    return { itemPrintTemplates: this._collectTemplates() };
+  }
+
+  setBaseFields(fields) {
+    this.baseFields = fields || [];
+    this._refreshFieldRows();
+  }
+
+  _addCard(template = {}) {
+    const card = document.createElement("div");
+    card.className = "type-card";
+    card.dataset.id = template.id || `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    const nameInput = this.host._input("field-input tpl-menu-name", "שם בתפריט", template.name || "");
+    const pathInput = this.host._input("field-input tpl-path", "templates/...docx", template.path || "");
+    const topRow = document.createElement("div");
+    topRow.className = "field-row tmpl-row";
+    topRow.append(nameInput, pathInput);
+
+    const mapTitle = document.createElement("p");
+    mapTitle.className = "mapping-empty";
+    mapTitle.style.margin = "10px 0 6px";
+    mapTitle.textContent = "מיפוי תגי Word לשדות מרשימת הבסיס:";
+
+    const mapHead = document.createElement("div");
+    mapHead.className = "grid-head";
+    ["שם התג בוורד", "מקור השדה", "שדה למילוי", ""].forEach((text) => {
+      const span = document.createElement("span");
+      span.textContent = text;
+      mapHead.appendChild(span);
+    });
+
+    const mapEl = document.createElement("div");
+    mapEl.className = "template-field-map";
+    const fieldMap = template.templateFieldMap || {};
+    Object.entries(fieldMap).forEach(([tag, field]) => this._addFieldMapRow(mapEl, { tag, ...field }));
+    if (!Object.keys(fieldMap).length) this._addFieldMapRow(mapEl, {});
+
+    const addMapBtn = document.createElement("button");
+    addMapBtn.type = "button";
+    addMapBtn.className = "btn btn--sm";
+    addMapBtn.textContent = "+ הוסף מיפוי";
+    addMapBtn.addEventListener("click", () => this._addFieldMapRow(mapEl, {}));
+
+    const removeCard = this.host._removeBtn(card);
+    removeCard.textContent = "הסר תבנית";
+    card.append(topRow, mapTitle, mapHead, mapEl, addMapBtn, removeCard);
+    this.templatesEl.appendChild(card);
+  }
+
+  _addFieldMapRow(container, field = {}) {
+    const row = document.createElement("div");
+    row.className = "field-row template-map-row";
+    const tagInput = this.host._input("field-input template-tag", "שם התג בוורד", field.tag || "");
+    const sourceSelect = document.createElement("select");
+    sourceSelect.className = "field-input template-source";
+    sourceSelect.append(new Option("רשימת הבסיס", "base"), new Option("שדות מערכת (אוטומטי)", "system"));
+    sourceSelect.value = field.source === "system" ? "system" : "base";
+    const fieldSelect = document.createElement("select");
+    fieldSelect.className = "field-input template-field";
+    sourceSelect.addEventListener("change", () => this._populateFieldSelect(fieldSelect, sourceSelect.value, fieldSelect.value));
+    row.append(tagInput, sourceSelect, fieldSelect, this.host._removeBtn(row));
+    container.appendChild(row);
+    this._populateFieldSelect(fieldSelect, sourceSelect.value, field.internal || "");
+  }
+
+  _populateFieldSelect(select, source, selected) {
+    if (source === "system") {
+      select.innerHTML = "";
+      SystemDateService.FIELDS.forEach((field) => select.append(new Option(field.title, field.internal)));
+      select.value = selected || SystemDateService.FIELDS[0].internal;
+      return;
+    }
+    this.host._populateSelect(select, selected, this.baseFields);
+  }
+
+  _refreshFieldRows() {
+    this.templatesEl.querySelectorAll(".template-map-row").forEach((row) => {
+      const source = row.querySelector(".template-source").value;
+      const select = row.querySelector(".template-field");
+      this._populateFieldSelect(select, source, select.value);
+    });
+  }
+
+  _collectTemplates() {
+    const templates = [];
+    this.templatesEl.querySelectorAll(".type-card").forEach((card) => {
+      const path = card.querySelector(".tpl-path").value.trim();
+      if (!path) return;
+      const name = card.querySelector(".tpl-menu-name").value.trim();
+      const id = card.dataset.id || `tpl_${templates.length}`;
+      const templateFieldMap = {};
+      card.querySelectorAll(".template-map-row").forEach((row) => {
+        const tag = row.querySelector(".template-tag").value.trim();
+        const source = row.querySelector(".template-source").value;
+        const internal = row.querySelector(".template-field").value;
+        if (!tag || !internal) return;
+        templateFieldMap[tag] = source === "system" ? { source: "system", internal } : { source: "base", internal };
+      });
+      templates.push({ id, name, path, templateFieldMap });
+    });
+    return templates;
+  }
+}
+
 class AdminConfigPage {
   constructor() {
     this.statusEl = document.getElementById("status");
@@ -407,6 +767,7 @@ class AdminConfigPage {
     this.spConfig = null;
     this.spFields = [];
     this.displayPicker = new OrderedFieldPicker(document.getElementById("spDisplayFields"));
+    this.itemPrintEditor = new ItemPrintTemplatesEditor(document.getElementById("itemPrintEditor"), this);
 
     this.editors = [
       new RelatedListEditor(document.getElementById("summonsEditor"), "summons", {
@@ -471,19 +832,42 @@ class AdminConfigPage {
     this.config = await QuickPrintConfigStore.get();
     this.templateEl.value = this.config.templatePath;
     this.listEl.innerHTML = "";
-    this.config.fields.forEach((f) => this._addRow(f.tag, f.column));
-    if (!this.config.fields.length) this._addRow("", "");
+    this.config.fields.forEach((field) => this._addRow(field));
+    if (!this.config.fields.length) this._addRow({});
   }
 
-  _addRow(tag = "", column = "") {
+  _addRow(field = {}) {
+    const tag = typeof field === "string" ? field : field.tag || "";
+    const column = typeof field === "string" ? field : field.column || "";
+    const source = typeof field === "object" && field.source === "system" ? "system" : "column";
+    const internal = typeof field === "object" ? field.internal || "printDay" : "printDay";
+
     const row = document.createElement("div");
-    row.className = "field-row";
+    row.className = "field-row quick-field-row";
 
     const tagInput = this._input("field-input tag", "שם התג בוורד", tag);
-    const colInput = this._input("field-input column", "שם העמודה בטבלה", column);
-    colInput.setAttribute("list", "columnOptions");
+    const sourceSelect = document.createElement("select");
+    sourceSelect.className = "field-input quick-source";
+    sourceSelect.append(new Option("עמודה בטבלה", "column"), new Option("שדה מערכת (אוטומטי)", "system"));
 
-    row.append(tagInput, colInput, this._removeBtn(row));
+    const columnInput = this._input("field-input column", "שם העמודה בטבלה", column);
+    columnInput.setAttribute("list", "columnOptions");
+
+    const systemSelect = document.createElement("select");
+    systemSelect.className = "field-input quick-system";
+    SystemDateService.FIELDS.forEach((item) => systemSelect.append(new Option(item.title, item.internal)));
+    systemSelect.value = internal;
+
+    const sync = () => {
+      const isSystem = sourceSelect.value === "system";
+      columnInput.hidden = isSystem;
+      systemSelect.hidden = !isSystem;
+    };
+    sourceSelect.addEventListener("change", sync);
+    sourceSelect.value = source;
+    sync();
+
+    row.append(tagInput, sourceSelect, columnInput, systemSelect, this._removeBtn(row));
     this.listEl.appendChild(row);
   }
 
@@ -504,6 +888,8 @@ class AdminConfigPage {
     this.displayPicker.setFields(this.spFields);
     this.displayPicker.setOrder(this.spConfig.displayFields || []);
 
+    this.itemPrintEditor.setBaseFields(this.spFields);
+    this.itemPrintEditor.load(this.spConfig);
     this.editors.forEach((editor) => editor.load(this.spConfig));
   }
 
@@ -640,6 +1026,7 @@ class AdminConfigPage {
     );
     this.displayPicker.setFields(this.spFields);
     this.editors.forEach((editor) => editor.setBaseFields(this.spFields));
+    this.itemPrintEditor.setBaseFields(this.spFields);
   }
 
   // ---- Shared helpers ----
@@ -663,10 +1050,21 @@ class AdminConfigPage {
 
   _collectQuickPrint() {
     const fields = [];
-    this.listEl.querySelectorAll(".field-row").forEach((row) => {
+    this.listEl.querySelectorAll(".quick-field-row").forEach((row) => {
+      if (!row.querySelector(".tag")) return;
       const tag = row.querySelector(".tag").value.trim();
+      if (!tag) return;
+      const source = row.querySelector(".quick-source")?.value || "column";
+      if (source === "system") {
+        fields.push({
+          tag,
+          source: "system",
+          internal: row.querySelector(".quick-system")?.value || "printDay",
+        });
+        return;
+      }
       const column = row.querySelector(".column").value.trim();
-      if (tag) fields.push({ tag, column: column || tag });
+      fields.push({ tag, column: column || tag, source: "column" });
     });
     return {
       templatePath: this.templateEl.value.trim() || "templates/template1.docx",
@@ -693,16 +1091,18 @@ class AdminConfigPage {
       displayFields: this.displayPicker.getOrder(),
     };
     this.editors.forEach((editor) => Object.assign(raw, editor.collect()));
+    Object.assign(raw, this.itemPrintEditor.collect());
     return raw;
   }
 
   _bindActions() {
-    document.getElementById("addField").addEventListener("click", () => this._addRow("", ""));
+    document.getElementById("addField").addEventListener("click", () => this._addRow({}));
     document.getElementById("addSpField").addEventListener("click", () => this._addSpRow("", ""));
     document.getElementById("loadFields").addEventListener("click", () => this._loadFields());
     document.getElementById("save").addEventListener("click", () => this._save());
     document.getElementById("reset").addEventListener("click", () => this._reset());
     document.getElementById("exportSettings").addEventListener("click", () => this._export());
+    document.getElementById("exportQr").addEventListener("click", () => this._exportQr());
     document.getElementById("importSettings").addEventListener("click", () =>
       document.getElementById("importFile").click()
     );
@@ -712,15 +1112,12 @@ class AdminConfigPage {
     });
   }
 
-  // Downloads a JSON snapshot of the settings currently shown in the form.
-  _export() {
-    const data = {
-      type: "summons-extension-settings",
-      version: 1,
-      exportedAt: new Date().toISOString(),
+  // Downloads a full JSON snapshot: form edits plus saved custom templates and mappings.
+  async _export() {
+    const data = await SettingsBackupStore.export({
       quickPrint: this._collectQuickPrint(),
       sharePoint: this._collectSharePoint(),
-    };
+    });
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -730,13 +1127,26 @@ class AdminConfigPage {
     this._status("ההגדרות יוצאו לקובץ", "ok");
   }
 
-  // Reads a settings file, persists it, and reloads the form.
+  // Splits the same snapshot used by _export() into multiple QR codes for phone transfer.
+  async _exportQr() {
+    try {
+      const data = await SettingsBackupStore.export({
+        quickPrint: this._collectQuickPrint(),
+        sharePoint: this._collectSharePoint(),
+      });
+      new QrExportModal().open(JSON.stringify(data));
+      this._status("נוצרו קודי QR — סרוק אותם בדף הטלפון", "ok");
+    } catch (err) {
+      console.error(err);
+      this._status(err?.message || "יצירת ה-QR נכשלה", "error");
+    }
+  }
+
+  // Reads a full settings file, persists every setting, and reloads the form.
   async _import(file) {
     if (!file) return;
     try {
-      const data = JSON.parse(await file.text());
-      if (data.quickPrint) await QuickPrintConfigStore.save(data.quickPrint);
-      if (data.sharePoint) await SharePointConfigStore.save(data.sharePoint);
+      await SettingsBackupStore.import(JSON.parse(await file.text()));
       await this._loadConfig();
       await this._loadSpConfig();
       this._status("ההגדרות יובאו והוחלו בהצלחה", "ok");

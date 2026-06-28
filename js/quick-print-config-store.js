@@ -22,7 +22,15 @@ class QuickPrintConfigStore {
     return {
       templatePath: saved.templatePath || def.templatePath,
       outputMode: saved.outputMode || def.outputMode,
-      fields: Array.isArray(saved.fields) ? saved.fields : def.fields,
+      fields: Array.isArray(saved.fields)
+        ? saved.fields.map((field) => {
+          if (typeof field === "string") return { tag: field, column: field, source: "column" };
+          if (field.source === "system") {
+            return { tag: field.tag, source: "system", internal: field.internal || "printDay" };
+          }
+          return { tag: field.tag, column: field.column ?? field.tag, source: "column" };
+        })
+        : def.fields,
     };
   }
 

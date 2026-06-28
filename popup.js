@@ -226,4 +226,5 @@ new DownloadReportButton({ id: "downloadBtn", status, busyText: "מייצא..." 
 new AdminUnlock("appLogo");
 new AdminGate({ toggleId: "openAdminBtn", gateId: "adminGate", inputId: "adminPass", enterId: "adminEnter", status });
 new OpenPageButton("printHubBtn", "hub.html");
+new OpenPageButton("itemPrintBtn", "item-print.html");
 new OpenPageButton("spLookupBtn", "sp-lookup.html");

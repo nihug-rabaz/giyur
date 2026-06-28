@@ -52,10 +52,11 @@
       </div>
 
       <div class="card">
-        <h2>שדות — תג בוורד ↔ עמודה בטבלה</h2>
+        <h2>שדות — תג בוורד ↔ עמודה / שדה מערכת</h2>
         <div class="grid-head">
           <span>שם התג בוורד (בתוך [ ])</span>
-          <span>שם העמודה בטבלה מהאתר</span>
+          <span>מקור</span>
+          <span>עמודה / שדה מערכת</span>
           <span class="spacer"></span>
         </div>
         <div id="fieldList"></div>
@@ -98,6 +99,8 @@
         <p class="mapping-empty" style="margin-bottom:10px">הוסף שדות וסדר אותם בעזרת החצים. הסדר כאן הוא סדר העמודות במסך. אם לא נבחר דבר — יוצגו כל השדות.</p>
         <div id="spDisplayFields"></div>
       </div>
+
+      <div class="card" id="itemPrintEditor"></div>
     </section>
 
     <section class="lab-panel" id="panel-summons" data-panel>
@@ -111,6 +114,7 @@
     <div class="actions lab-actions">
       <button type="button" class="btn btn--primary" id="save">שמור הגדרות</button>
       <button type="button" class="btn" id="exportSettings">ייצוא הגדרות</button>
+      <button type="button" class="btn" id="exportQr">ייצוא ל-QR</button>
       <button type="button" class="btn" id="importSettings">ייבוא הגדרות</button>
       <button type="button" class="btn btn--danger" id="reset">אפס לברירת מחדל</button>
       <input type="file" id="importFile" accept=".json,application/json" hidden />
@@ -121,11 +125,16 @@
 
   <datalist id="columnOptions"></datalist>
 
+  <script src="js/system-date-service.js"></script>
   <script src="js/quick-print-config.js"></script>
   <script src="js/quick-print-config-store.js"></script>
   <script src="js/sharepoint-field-map.js"></script>
   <script src="js/sharepoint-config-store.js"></script>
   <script src="js/sharepoint-lookup-service.js"></script>
+  <script src="js/settings-backup-store.js"></script>
+  <script src="js/qrcode.min.js"></script>
+  <script src="js/qr-chunker.js"></script>
+  <script src="js/qr-export-modal.js"></script>
   <script src="admin.js"></script>
   <script src="admin-ui.js"></script>
 </body>

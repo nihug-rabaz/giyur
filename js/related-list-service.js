@@ -22,6 +22,7 @@ class RelatedListService {
         internal: f.InternalName || f.StaticName,
         entityProperty: f.EntityPropertyName || f.InternalName || f.StaticName,
         type: f.TypeAsString || "",
+        dateOnly: SharePointLookupService.isDateOnlyField(f),
       }))
       .filter((f) => f.internal)
       .sort((a, b) => String(a.title).localeCompare(String(b.title), "he"));
@@ -43,16 +44,163 @@ class RelatedListService {
     }
     if (!parts.length) parts.push(`${prop} ne null`);
     const items = await this.service.queryItems(parts.join(" and "), 5000);
-    return this._sortByDate(items);
+    return this._sortByDateTime(this._dedupeItems(items));
+  }
+
+  // Items in this related list whose configured Lookup field points to a given base-list item id.
+  async searchByLookup(baseItemId, { type } = {}) {
+    const field = this.profile.lookupField;
+    if (!field) throw new Error("לא הוגדר שדה קישור (Lookup) בהגדרות");
+    const id = Number(baseItemId);
+    if (Number.isNaN(id)) return [];
+    const typeSuffix = type?.field && type?.value
+      ? ` and ${this._entityOf(type.field)} eq '${this._esc(type.value)}'`
+      : "";
+    const filters = this._lookupIdFilters(field, id).map((part) => `${part}${typeSuffix}`);
+    let items;
+    try {
+      items = await this.service.queryItemsFirst(filters, 5000);
+    } catch {
+      items = await this._searchByLookupInMemory(field, id, type);
+    }
+    return this._sortByDateTime(this._dedupeItems(items));
+  }
+
+  async _searchByLookupInMemory(lookupField, baseItemId, type) {
+    const items = await this.service.fetchItems();
+    const targetId = Number(baseItemId);
+    return items.filter((item) => {
+      const linked = Number(this.lookupId(item, lookupField));
+      if (linked !== targetId) return false;
+      if (type?.field && type?.value) {
+        return String(this.valueOf(item, type.field) ?? "") === type.value;
+      }
+      return true;
+    });
+  }
+
+  _lookupIdFilters(internalName, id) {
+    const props = this._lookupIdProperties(internalName);
+    return props.map((prop) => `${prop} eq ${id}`);
+  }
+
+  _lookupIdProperties(internalName) {
+    const field = this.fields.find((f) => f.internal === internalName);
+    const internal = field?.internal || internalName;
+    const entity = field?.entityProperty || internal;
+    const props = [];
+    const seen = new Set();
+    const add = (base) => {
+      const key = base ? `${base}Id` : "";
+      if (key && !seen.has(key)) { seen.add(key); props.push(key); }
+    };
+    [internal, entity].forEach((name) => {
+      if (/Text$/i.test(name)) add(name.replace(/Text$/i, ""));
+    });
+    add(internal);
+    add(entity);
+    return props;
+  }
+
+  _dedupeItems(items) {
+    const seen = new Set();
+    return items.filter((item) => {
+      const id = item.ID ?? item.Id;
+      if (id == null) return true;
+      const key = String(id);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  itemSortKey(item) {
+    const dateVal = this.valueOf(item, this.profile.dateField);
+    const timeField = this._sortTimeField();
+    const timeVal = timeField ? this.valueOf(item, timeField) : "";
+    if (timeField && timeVal) return this._combineDateAndTime(dateVal, timeVal);
+    const ms = Date.parse(dateVal);
+    return Number.isNaN(ms) ? 0 : ms;
+  }
+
+  _sortTimeField() {
+    const fields = this.fields || [];
+    const summonsTime = fields.find((field) =>
+      field.internal !== this.profile.dateField && /שעת\s*הזימון/i.test(field.title)
+    );
+    if (summonsTime) return summonsTime.internal;
+    return fields.find((field) => {
+      if (field.internal === this.profile.dateField) return false;
+      return /שעת|שעה/i.test(field.title) || /DateTime|Time/i.test(field.type);
+    })?.internal || "";
+  }
+
+  // Merges a date-only value with a separate time field (e.g. "3:00" inside a longer text).
+  _combineDateAndTime(dateVal, timeVal) {
+    const base = this._dateBase(dateVal);
+    if (!base) return 0;
+    const parts = this._parseTimeParts(timeVal);
+    if (!parts) return base.getTime();
+    base.setHours(parts.h, parts.m, parts.s, 0);
+    return base.getTime();
+  }
+
+  _dateBase(dateVal) {
+    if (!dateVal) return null;
+    const parsed = new Date(dateVal);
+    if (!Number.isNaN(parsed.getTime())) {
+      parsed.setHours(0, 0, 0, 0);
+      return parsed;
+    }
+    const iso = String(dateVal).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+    const fallback = new Date(`${iso}T00:00:00`);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
+  }
+
+  _parseTimeParts(value) {
+    if (value == null || value === "") return null;
+    const str = String(value).trim();
+    if (str.includes("T")) {
+      const iso = new Date(str);
+      if (!Number.isNaN(iso.getTime())) {
+        return { h: iso.getHours(), m: iso.getMinutes(), s: iso.getSeconds() };
+      }
+    }
+    const colon = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (colon) {
+      return { h: Number(colon[1]), m: Number(colon[2]), s: Number(colon[3] || 0) };
+    }
+    const hourOnly = str.match(/^(\d{1,2})$/);
+    if (hourOnly) {
+      const h = Number(hourOnly[1]);
+      if (h >= 0 && h <= 23) return { h, m: 0, s: 0 };
+    }
+    const embedded = str.match(/(?:^|[^\d:])(\d{1,2})(?:[^\d:]|$)/);
+    if (embedded) {
+      const h = Number(embedded[1]);
+      if (h >= 0 && h <= 23) return { h, m: 0, s: 0 };
+    }
+    return null;
+  }
+
+  _sortByDateTime(items) {
+    return items.slice().sort((a, b) => this.itemSortKey(a) - this.itemSortKey(b));
+  }
+
+  _sortByDate(items) {
+    return this._sortByDateTime(items);
   }
 
   // Builds the location $filter for a Lookup field (by id) or a Choice field (by text).
   _locationClause(values) {
     const field = this.profile.locationField;
-    const entity = this._entityOf(field);
     if (this._isLookup(field)) {
-      return values.map((v) => `${entity}Id eq ${Number(v)}`).join(" or ");
+      const props = this._lookupIdProperties(field);
+      const prop = props[0] || `${this._entityOf(field)}Id`;
+      return values.map((v) => `${prop} eq ${Number(v)}`).join(" or ");
     }
+    const entity = this._entityOf(field);
     return values.map((v) => `${entity} eq '${this._esc(v)}'`).join(" or ");
   }
 
@@ -89,20 +237,13 @@ class RelatedListService {
     return String(value).replace(/'/g, "''");
   }
 
-  _sortByDate(items) {
-    const internal = this.profile.dateField;
-    return items.slice().sort((a, b) => {
-      const da = Date.parse(this.valueOf(a, internal)) || 0;
-      const db = Date.parse(this.valueOf(b, internal)) || 0;
-      return da - db;
-    });
-  }
-
   // Resolves the base-list item id this item points to via its configured Lookup field.
   lookupId(item, internalName) {
+    for (const key of this._lookupIdProperties(internalName)) {
+      if (item[key] != null) return item[key];
+    }
     const entity = this._entityOf(internalName);
-    if (item[entity + "Id"] != null) return item[entity + "Id"];
-    const value = item[entity];
+    const value = item[entity] ?? item[internalName];
     if (value == null) return null;
     if (Array.isArray(value)) return value[0]?.Id ?? value[0]?.ID ?? null;
     if (typeof value === "object") return value.Id ?? value.ID ?? null;

@@ -21,6 +21,7 @@ class SharePointItemLookup {
         internal: f.InternalName || f.StaticName,
         entityProperty: f.EntityPropertyName || f.InternalName || f.StaticName,
         type: f.TypeAsString || "",
+        dateOnly: SharePointLookupService.isDateOnlyField(f),
         readOnly: Boolean(f.ReadOnlyField),
         required: Boolean(f.Required),
       }))

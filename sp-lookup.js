@@ -497,8 +497,9 @@ class SharePointListBuilderPage {
     this._setStatus("מכין הדפסה...", "info");
     try {
       const templatePath = await this._templatePath(templateNum);
+      const cfg = templateNum === 1 ? await QuickPrintConfigStore.get() : { fields: [] };
       const service = new QuickPrintService(
-        { templatePath, outputMode: "browserPrint", fields: [] },
+        { templatePath, outputMode: "browserPrint", fields: cfg.fields || [] },
         this._exportHeaders(idLabel)
       );
       await service.printAll(rows);
