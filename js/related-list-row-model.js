@@ -158,6 +158,7 @@ class RelatedListRowModel {
         dateOnly: SharePointLookupService.isDateOnlyField(f),
       }))
       .filter((f) => f.internal);
+    await this.baseService.warmLookupCaches(this.baseFields);
   }
 
   async _baseFieldsForLayout() {
@@ -187,6 +188,11 @@ class RelatedListRowModel {
     return row;
   }
 
+  _fieldMeta(source, internal) {
+    const fields = source === "base" ? (this.baseFields || []) : (this.listService?.fields || []);
+    return fields.find((f) => f.internal === internal) || null;
+  }
+
   withTemplateMappings(row, sources) {
     const printRow = { ...row };
     Object.entries(this.profile.templateFieldMap || {}).forEach(([tag, field]) => {
@@ -194,7 +200,10 @@ class RelatedListRowModel {
       const source = field.source === "base" ? "base" : "list";
       const item = source === "base" ? sources.baseItem : sources.listItem;
       const read = source === "base" ? sources.baseRead : sources.listRead;
-      printRow[tag] = item && read ? SharePointLookupService.formatValue(read(item, field.internal)) : "";
+      const meta = this._fieldMeta(source, field.internal);
+      printRow[tag] = item && read
+        ? SharePointLookupService.formatValue(read(item, field.internal), SharePointLookupService.formatOptionsForField(meta))
+        : "";
     });
     return printRow;
   }

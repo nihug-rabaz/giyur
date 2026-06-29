@@ -17,7 +17,9 @@ class RelatedListPage {
     this.rowLocations = [];
     this.rowJudges = [];
     this.rowDates = [];
+    this.rowSummoned = [];
     this.rowSortKeys = [];
+    this.includeNotSummoned = false;
     this.selectedIndexes = new Set();
     this.locationOptions = [];
     this.locationLabels = new Map();
@@ -27,6 +29,9 @@ class RelatedListPage {
     this.peopleModeEl = document.getElementById("peopleMode");
     this.typeTabsEl = document.getElementById("typeTabs");
     this.locationFilterEl = document.getElementById("locationFilter");
+    this.summonedFilterEl = document.getElementById("summonedFilter");
+    this.includeNotSummonedEl = document.getElementById("includeNotSummoned");
+    this.includeNotSummonedLabelEl = document.getElementById("includeNotSummonedLabel");
     this.printButtonsEl = document.getElementById("printButtons");
     this.statusEl = document.getElementById("status");
     this.tableHead = document.getElementById("tableHead");
@@ -36,7 +41,7 @@ class RelatedListPage {
     this._bind();
     this.selectionBar = new RowSelectionBar({
       onTemplate: (template, event) => this._openTemplateActionModal(
-        template.path,
+        template,
         template.name || "תבנית",
         this._selectedPrintRows(),
         this._selectedCount(),
@@ -51,6 +56,10 @@ class RelatedListPage {
     document.getElementById("searchBtn").addEventListener("click", () => this._search());
     document.getElementById("reloadFields").addEventListener("click", () => this._loadFields());
     document.getElementById("downloadReport").addEventListener("click", () => this._downloadReport());
+    this.includeNotSummonedEl?.addEventListener("change", () => {
+      this.includeNotSummoned = this.includeNotSummonedEl.checked;
+      this._updateResultCount();
+    });
     [this.dateFromEl, this.dateToEl].forEach((el) =>
       el.addEventListener("keydown", (e) => { if (e.key === "Enter") this._search(); })
     );
@@ -103,9 +112,10 @@ class RelatedListPage {
 
   // One print button per template: the active type's templates, or the profile's flat templates.
   _activeTemplates() {
-    return this.activeType?.templates?.length
+    const source = this.activeType?.templates?.length
       ? this.activeType.templates
       : (this.profile.templates || []);
+    return source.filter((t) => TemplateConfig.hasAnyPath(t));
   }
 
   _renderPrintButtons() {
@@ -118,7 +128,7 @@ class RelatedListPage {
       btn.type = "button";
       btn.className = "btn btn--accent";
       btn.textContent = t.name || `תבנית ${i + 1}`;
-      btn.addEventListener("click", (e) => this._openTemplateActionModal(t.path, btn.textContent, null, null, e));
+      btn.addEventListener("click", (e) => this._openTemplateActionModal(t, btn.textContent, null, null, e));
       fragment.appendChild(btn);
     });
     this.printButtonsEl.appendChild(fragment);
@@ -298,7 +308,10 @@ class RelatedListPage {
     this.rowLocations = this._locationsOf(items);
     this.rowJudges = this._judgesOf(items);
     this.rowDates = this._datesOf(items);
+    this.rowSummoned = items.map((item) => this._summonedOf(item));
     this.rowSortKeys = items.map((item) => this.listService.itemSortKey(item));
+    this.includeNotSummoned = false;
+    if (this.includeNotSummonedEl) this.includeNotSummonedEl.checked = false;
 
     if (!wantsBase) {
       const { columns } = this._columnsFromLayout(this.listService.fields, [], layout);
@@ -344,7 +357,10 @@ class RelatedListPage {
     this.rowLocations = [];
     this.rowJudges = [];
     this.rowDates = [];
+    this.rowSummoned = [];
     this.rowSortKeys = [];
+    this.includeNotSummoned = false;
+    if (this.includeNotSummonedEl) this.includeNotSummonedEl.checked = false;
     await this._ensureBaseFields();
     const baseRead = (it, internal) => this.baseService.readValue(it, internal);
     const baseMap = await this._baseMapFor(items, lookupField);
@@ -363,6 +379,10 @@ class RelatedListPage {
       const listItem = listByBaseId.get(Number(person.ID ?? person.Id));
       return listItem ? this._gregorianDayKey(this.listService.valueOf(listItem, this.profile.dateField)) : "";
     });
+    this.rowSummoned = people.map((person) => {
+      const listItem = listByBaseId.get(Number(person.ID ?? person.Id));
+      return listItem ? this._summonedOf(listItem) : true;
+    });
     this.rowSortKeys = people.map((person) => {
       const listItem = listByBaseId.get(Number(person.ID ?? person.Id));
       return listItem ? this.listService.itemSortKey(listItem) : 0;
@@ -370,6 +390,48 @@ class RelatedListPage {
     this._render(this.baseColumns, rows.map((x) => x.row), rows.map((x) => x.printRow));
     if (!people.length) return this._setStatus(`${this._foundMsg(items.length)}, אך ללא קישור לתיקים`, "error");
     this._setStatus(`נמצאו ${people.length} תיקים (מתוך ${items.length} ${this.noun} בטווח)`, "ok");
+  }
+
+  _summonedOf(item) {
+    const field = this.profile.summonedField;
+    if (!field) return true;
+    return SharePointLookupService.isTruthyValue(this.listService.valueOf(item, field));
+  }
+
+  _notSummonedCount() {
+    return this.rowSummoned.filter((summoned) => summoned === false).length;
+  }
+
+  _isRowExportable(index) {
+    if (!this.profile.summonedField || this.includeNotSummoned) return true;
+    return this.rowSummoned[index] !== false;
+  }
+
+  _exportableIndexes() {
+    return this.rows.map((_, index) => index).filter((index) => this._isRowExportable(index));
+  }
+
+  _exportPrintRows() {
+    return this._exportableIndexes().map((index) => this.printRows[index] ?? this.rows[index]);
+  }
+
+  _updateSummonedFilter() {
+    if (!this.summonedFilterEl) return;
+    if (!this.profile.summonedField) {
+      this.summonedFilterEl.hidden = true;
+      return;
+    }
+    const excluded = this._notSummonedCount();
+    if (!excluded) {
+      this.summonedFilterEl.hidden = true;
+      this.includeNotSummoned = false;
+      if (this.includeNotSummonedEl) this.includeNotSummonedEl.checked = false;
+      return;
+    }
+    this.summonedFilterEl.hidden = false;
+    if (this.includeNotSummonedLabelEl) {
+      this.includeNotSummonedLabelEl.textContent = `לכלול גם פריטים עם "לא זומן" (${excluded})`;
+    }
   }
 
   _foundMsg(count) {
@@ -421,15 +483,18 @@ class RelatedListPage {
 
   // Splits rows into separate Word tables by Gregorian day, judge field, and summons location.
   _reportGroups() {
+    const activeIndexes = this._exportableIndexes();
+    const exportRows = activeIndexes.map((index) => this.rows[index]);
     const hasJudge = !!this.profile.judgeField;
     const hasLocation = !!this.profile.locationField && this.rowLocations.length === this.rows.length;
     const hasDate = !!this.profile.dateField && this.rowDates.length === this.rows.length;
     if (!hasJudge && !hasLocation && !hasDate) {
-      return [{ title: null, rows: this.rows, meta: {}, indexes: this.rows.map((_, i) => i) }];
+      return [{ title: null, rows: exportRows, meta: {}, indexes: activeIndexes }];
     }
 
     const buckets = new Map();
-    this.rows.forEach((row, index) => {
+    activeIndexes.forEach((index) => {
+      const row = this.rows[index];
       const dateKey = hasDate ? (this.rowDates[index] || "ללא-תאריך") : "";
       const dateLabel = hasDate ? this._rowDateLabel(index) : "";
       const judge = hasJudge ? (this.rowJudges[index] || "ללא אב״ד") : "";
@@ -482,6 +547,7 @@ class RelatedListPage {
         dateOnly: SharePointLookupService.isDateOnlyField(f),
       }))
       .filter((f) => f.internal);
+    await this.baseService.warmLookupCaches(this.baseFields);
     this.baseColumns = this._computeColumns(this.baseFields, this.config.displayFields);
   }
 
@@ -522,6 +588,7 @@ class RelatedListPage {
     this.rows = rows;
     this.printRows = printRows;
     this._clearSelection(false);
+    this._updateSummonedFilter();
     this._renderHead();
     this._renderRows();
     this._updateSelectionBar();
@@ -534,6 +601,7 @@ class RelatedListPage {
   _selectedPrintRows() {
     return [...this.selectedIndexes]
       .sort((a, b) => a - b)
+      .filter((index) => this._isRowExportable(index))
       .map((index) => this.printRows[index] ?? this.rows[index]);
   }
 
@@ -578,6 +646,7 @@ class RelatedListPage {
       count: this._selectedCount(),
       templates: this._activeTemplates(),
     });
+    this._updateResultCount();
   }
 
   _renderHead() {
@@ -619,12 +688,27 @@ class RelatedListPage {
       fragment.appendChild(tr);
     });
     this.tableBody.appendChild(fragment);
-    const selected = this._selectedCount();
-    this.countEl.textContent = this.rows.length
-      ? (selected ? `${selected} נבחרו מתוך ${this.rows.length} שורות` : `${this.rows.length} שורות`)
-      : "";
+    this._updateResultCount();
     this.emptyState.hidden = this.rows.length > 0;
     if (!this.rows.length) this.emptyState.textContent = "לא נמצאו תוצאות בטווח שנבחר.";
+  }
+
+  _updateResultCount() {
+    if (!this.countEl) return;
+    const selected = this._selectedCount();
+    const exportable = this._exportableIndexes().length;
+    const excluded = this.rows.length - exportable;
+    if (!this.rows.length) {
+      this.countEl.textContent = "";
+      return;
+    }
+    let text = selected
+      ? `${selected} נבחרו מתוך ${this.rows.length} שורות`
+      : `${this.rows.length} שורות`;
+    if (excluded > 0 && !this.includeNotSummoned) {
+      text += ` (${exportable} לייצוא/הדפסה, ${excluded} לא זומן)`;
+    }
+    this.countEl.textContent = text;
   }
 
   // Long values are clipped with an ellipsis; clicking the cell opens the full text in a modal.
@@ -730,6 +814,11 @@ class RelatedListPage {
     return headers;
   }
 
+  _fieldMeta(source, internal) {
+    const fields = source === "base" ? (this.baseFields || []) : (this.listService?.fields || []);
+    return fields.find((f) => f.internal === internal) || null;
+  }
+
   _withTemplateMappings(row, sources) {
     const printRow = { ...row };
     Object.entries(this.profile.templateFieldMap || {}).forEach(([tag, field]) => {
@@ -737,7 +826,10 @@ class RelatedListPage {
       const source = field.source === "base" ? "base" : "list";
       const item = source === "base" ? sources.baseItem : sources.listItem;
       const read = source === "base" ? sources.baseRead : sources.listRead;
-      printRow[tag] = item && read ? SharePointLookupService.formatValue(read(item, field.internal)) : "";
+      const meta = this._fieldMeta(source, field.internal);
+      printRow[tag] = item && read
+        ? SharePointLookupService.formatValue(read(item, field.internal), SharePointLookupService.formatOptionsForField(meta))
+        : "";
     });
     return printRow;
   }
@@ -791,7 +883,13 @@ class RelatedListPage {
   }
 
   async _downloadReport() {
-    if (!this.rows.length) return this._setStatus("אין נתונים לדוח — הצג קודם תוצאות", "error");
+    const exportRows = this._exportableIndexes().map((index) => this.rows[index]);
+    if (!exportRows.length) {
+      return this._setStatus(
+        this._notSummonedCount() ? 'אין פריטים לייצוא — כל הפריטים מסומנים כ"לא זומן"' : "אין נתונים לדוח — הצג קודם תוצאות",
+        "error"
+      );
+    }
     this._setStatus("מכין דוח Word...", "info");
     try {
       const dateLabel = this._dateLabel();
@@ -804,15 +902,20 @@ class RelatedListPage {
     }
   }
 
-  _openTemplateActionModal(templatePath, label, rowsOverride = null, countOverride = null, anchor = null) {
-    const rows = rowsOverride ?? (this.printRows.length ? this.printRows : this.rows);
+  _openTemplateActionModal(template, label, rowsOverride = null, countOverride = null, anchor = null) {
+    const rows = rowsOverride ?? this._exportPrintRows();
     if (!rows.length) {
       return this._setStatus(
-        rowsOverride ? "לא נבחרו שורות — סמן פריטים בטבלה" : "אין שורות — הצג קודם תוצאות",
+        rowsOverride
+          ? 'לא נבחרו שורות לייצוא — ייתכן שסומנו רק פריטים עם "לא זומן"'
+          : this._notSummonedCount()
+            ? 'אין פריטים לייצוא — כל הפריטים מסומנים כ"לא זומן". סמן "לכלול גם פריטים עם לא זומן" כדי לכלול אותם.'
+            : "אין שורות — הצג קודם תוצאות",
         "error"
       );
     }
-    if (!templatePath) return this._setStatus("לא הוגדר נתיב תבנית — הגדר בהגדרות", "error");
+    const items = TemplateConfig.actionItems(template);
+    if (!items.length) return this._setStatus("לא הוגדרה תבנית להדפסה או לייצוא — הגדר בהגדרות", "error");
     if (!this.templateActionModal) this.templateActionModal = new TemplateActionModal();
     const count = countOverride ?? rows.length;
     const hint = rowsOverride
@@ -822,16 +925,32 @@ class RelatedListPage {
       title: label,
       hint,
       anchor,
-      onChoose: (mode) => this._runTemplate(templatePath, label, mode, rows),
+      items,
+      onChoose: (mode) => this._runTemplate(template, label, mode, rows),
     });
   }
 
-  async _runTemplate(templatePath, label, outputMode, rowsOverride = null) {
+  async _runTemplate(template, label, outputMode, rowsOverride = null) {
+    const templatePath = TemplateConfig.resolvePath(template, outputMode);
+    if (!templatePath) {
+      return this._setStatus(
+        outputMode === "browserPrint" ? "לא הוגדרה תבנית להדפסה" : "לא הוגדרה תבנית לייצוא Word",
+        "error"
+      );
+    }
     const isPrint = outputMode === "browserPrint";
     this._setStatus(isPrint ? "מכין הדפסה..." : "מייצא ל-Word...", "info");
     try {
       const fields = this._templatePrintFields();
-      const rows = rowsOverride ?? (this.printRows.length ? this.printRows : this.rows);
+      const rows = rowsOverride ?? this._exportPrintRows();
+      if (!rows.length) {
+        return this._setStatus(
+          rowsOverride
+            ? 'לא נבחרו שורות לייצוא — ייתכן שסומנו רק פריטים עם "לא זומן"'
+            : 'אין פריטים לייצוא — כל הפריטים מסומנים כ"לא זומן"',
+          "error"
+        );
+      }
       const service = new QuickPrintService(
         {
           templatePath,

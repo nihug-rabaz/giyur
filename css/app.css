@@ -496,6 +496,15 @@ body.page {
 }
 .page .loc-filter[hidden] { display: none; }
 .page .loc-filter .loc-label { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.page .summoned-filter .summoned-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.page .summoned-filter input { flex: 0 0 auto; width: auto; }
 .page .loc-option { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
 .page .loc-option input { flex: 0 0 auto; width: auto; }
 

@@ -194,7 +194,9 @@ class ItemPrintPage {
     });
     const items = [
       ...ItemPrintPage.PROFILES.map((p) => ({ label: p.label, value: `profile:${p.key}` })),
-      ...this.itemPrintTemplates.map((t) => ({ label: t.name || t.path, value: `template:${t.id}` })),
+      ...this.itemPrintTemplates
+        .filter((t) => TemplateConfig.hasAnyPath(t))
+        .map((t) => ({ label: t.name || t.printPath || t.exportPath, value: `template:${t.id}` })),
     ];
     const hasTemplates = this.itemPrintTemplates.length > 0;
     this.menu.open({
@@ -222,14 +224,15 @@ class ItemPrintPage {
   _openDirectPrintMenu(template) {
     const item = this.baseItems[this.selectedBaseIndex];
     if (!item) return;
-    if (!template.path) return this._setStatus("לא הוגדר נתיב תבנית", "error");
+    if (!TemplateConfig.hasAnyPath(template)) return this._setStatus("לא הוגדרה תבנית להדפסה או לייצוא", "error");
     this._resetLinked();
     const label = template.name || "תבנית";
+    const items = TemplateConfig.actionItems(template);
     this.menu.open({
       title: label,
       hint: "בחר פעולה:",
       anchor: this._lastMenuAnchor,
-      items: TemplateActionModal.PRINT_ITEMS,
+      items,
       onChoose: (mode) => this._runDirectTemplate(template, mode),
     });
   }
@@ -285,6 +288,13 @@ class ItemPrintPage {
   async _runDirectTemplate(template, outputMode) {
     const item = this.baseItems[this.selectedBaseIndex];
     if (!item) return;
+    const templatePath = TemplateConfig.resolvePath(template, outputMode);
+    if (!templatePath) {
+      return this._setStatus(
+        outputMode === "browserPrint" ? "לא הוגדרה תבנית להדפסה" : "לא הוגדרה תבנית לייצוא Word",
+        "error"
+      );
+    }
     const row = this._buildDirectPrintRow(item, template);
     const label = template.name || "תבנית";
     const isPrint = outputMode === "browserPrint";
@@ -293,7 +303,7 @@ class ItemPrintPage {
       const fields = this._templatePrintFields(template.templateFieldMap);
       const service = new QuickPrintService(
         {
-          templatePath: template.path,
+          templatePath,
           outputMode,
           fields,
           templateFieldMap: template.templateFieldMap,
@@ -434,8 +444,8 @@ class ItemPrintPage {
   }
 
   _activeTemplates() {
-    if (this.activeType) return this.activeType.templates || [];
-    return this.profile.templates || [];
+    const source = this.activeType ? (this.activeType.templates || []) : (this.profile.templates || []);
+    return source.filter((t) => TemplateConfig.hasAnyPath(t));
   }
 
   _visibleIndexes() {
@@ -548,17 +558,26 @@ class ItemPrintPage {
   _openTemplateMenu(template, event) {
     const rows = this._selectedPrintRows();
     if (!rows.length) return this._setLinkedStatus("לא נבחרו פריטים — סמן פריטים בטבלה", "error");
-    if (!template.path) return this._setLinkedStatus("לא הוגדר נתיב תבנית", "error");
+    const items = TemplateConfig.actionItems(template);
+    if (!items.length) return this._setLinkedStatus("לא הוגדרה תבנית להדפסה או לייצוא", "error");
     const label = template.name || "תבנית";
     this.menu.open({
       title: label,
       hint: `בחר פעולה עבור ${rows.length} פריטים שנבחרו:`,
       anchor: event,
-      onChoose: (mode) => this._runTemplate(template.path, label, mode, rows),
+      items,
+      onChoose: (mode) => this._runTemplate(template, label, mode, rows),
     });
   }
 
-  async _runTemplate(templatePath, label, outputMode, rows) {
+  async _runTemplate(template, label, outputMode, rows) {
+    const templatePath = TemplateConfig.resolvePath(template, outputMode);
+    if (!templatePath) {
+      return this._setLinkedStatus(
+        outputMode === "browserPrint" ? "לא הוגדרה תבנית להדפסה" : "לא הוגדרה תבנית לייצוא Word",
+        "error"
+      );
+    }
     const isPrint = outputMode === "browserPrint";
     this._setLinkedStatus(isPrint ? "מכין הדפסה..." : "מייצא ל-Word...", "info");
     try {

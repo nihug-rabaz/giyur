@@ -3,6 +3,8 @@ class SharePointLookupService {
     this.config = config || {};
     this.fieldMap = fieldMap || {};
     this._fieldIndex = null;
+    this._fieldsByInternal = null;
+    this._lookupLabelCache = new Map();
   }
 
   // Pulls SP items, matches rows by join display names and injects mapped columns into each row.
@@ -17,6 +19,15 @@ class SharePointLookupService {
 
     const index = this.buildIndex(await this.fetchItems(), resolved.matchInternal);
     const { headers: newHeaders, targets, created } = this._resolveTargets(headers, resolved.fieldMap);
+    const mappedFields = Object.values(resolved.fieldMap).map((internal) => {
+      const field = this._fieldsByInternal?.get(internal);
+      return {
+        internal,
+        title: field?.Title || internal,
+        type: field?.TypeAsString || "",
+      };
+    });
+    await this.warmLookupCaches(mappedFields);
 
     rows.forEach((row) => {
       const item = index.get(this._norm(row[source.id]));
@@ -97,12 +108,59 @@ class SharePointLookupService {
   async fetchFields() {
     if (this._canFetchViaSharePointTab()) {
       const rich = await this._fetchArrayViaTab(this._fieldsUrl(true), "SharePoint fields").catch(() => null);
-      if (rich && rich.length) return rich;
-      return this._fetchArrayViaTab(this._fieldsUrl(false), "SharePoint fields");
+      if (rich && rich.length) {
+        this._indexFields(rich);
+        return rich;
+      }
+      const fields = await this._fetchArrayViaTab(this._fieldsUrl(false), "SharePoint fields");
+      this._indexFields(fields);
+      return fields;
     }
     const json = await this._fetchJson(this._fieldsUrl(false), "SharePoint fields");
     const body = json.d || json;
-    return body.results || body.value || [];
+    const fields = body.results || body.value || [];
+    this._indexFields(fields);
+    return fields;
+  }
+
+  _indexFields(fields) {
+    this._fieldsByInternal = new Map(
+      (fields || []).map((field) => [field.InternalName || field.StaticName, field])
+    );
+  }
+
+  static isLookupType(field) {
+    const type = field?.TypeAsString || field?.type || "";
+    return type === "Lookup" || type === "LookupMulti";
+  }
+
+  static formatSpLookupString(value) {
+    if (typeof value !== "string" || !value.includes(";#")) return null;
+    const chunks = value.split(";#").filter((part) => part !== "");
+    const labels = [];
+    for (let i = 0; i < chunks.length; i++) {
+      if (/^\d+$/.test(chunks[i]) && i + 1 < chunks.length) {
+        labels.push(chunks[i + 1]);
+        i += 1;
+      } else if (!/^\d+$/.test(chunks[i])) {
+        labels.push(chunks[i]);
+      }
+    }
+    return labels.length ? labels.join(", ") : null;
+  }
+
+  async warmLookupCaches(fields = []) {
+    const lookupFields = (fields || []).filter((field) => SharePointLookupService.isLookupType(field));
+    await Promise.all(lookupFields.map(async (field) => {
+      const internal = field.internal || field.InternalName || field.StaticName;
+      if (!internal || this._lookupLabelCache.has(internal)) return;
+      const title = field.title || field.Title || internal;
+      const options = await this.fetchLookupOptions(title);
+      this._lookupLabelCache.set(
+        internal,
+        new Map(options.map((option) => [String(option.id), option.label || String(option.id)]))
+      );
+    }));
   }
 
   async _fetchArrayViaTab(url, label) {
@@ -659,6 +717,24 @@ class SharePointLookupService {
     return format === 0 || format === "DateOnly";
   }
 
+  static isTruthyValue(value) {
+    if (value === true) return true;
+    if (value === false) return false;
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed) return true;
+    const lower = trimmed.toLowerCase();
+    if (lower === "true" || lower === "yes" || lower === "1" || lower === "כן") return true;
+    if (lower === "false" || lower === "no" || lower === "0" || lower === "לא") return false;
+    return true;
+  }
+
+  static formatOptionsForField(field) {
+    return {
+      fieldType: field?.type || field?.TypeAsString || field?.fieldType || "",
+      dateOnly: Boolean(field?.dateOnly) || SharePointLookupService.isDateOnlyField(field),
+    };
+  }
+
   static formatValue(value, options = {}) {
     if (value === true) return "כן";
     if (value === false) return "לא";
@@ -667,23 +743,41 @@ class SharePointLookupService {
       const lower = trimmed.toLowerCase();
       if (lower === "true" || lower === "yes" || lower === "1") return "כן";
       if (lower === "false" || lower === "no" || lower === "0") return "לא";
-      if (!SharePointLookupService._looksLikeIsoDate(trimmed)) return value;
-      const ms = Date.parse(trimmed);
-      if (Number.isNaN(ms)) return value;
-      if (options.dateOnly || options.fieldType === "Date" || SharePointLookupService._isDateOnlyIso(trimmed)) {
-        return new Date(ms).toLocaleDateString("he-IL");
-      }
-      const d = new Date(ms);
-      return d.toLocaleString("he-IL", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
     }
-    return value;
+    const parsed = SharePointLookupService._parseDateInput(value);
+    if (!parsed) return value;
+    const dateOnly = options.dateOnly
+      || options.fieldType === "Date"
+      || SharePointLookupService._isDateOnlyIso(parsed.raw)
+      || SharePointLookupService._isLocalMidnight(parsed.date);
+    if (dateOnly) return parsed.date.toLocaleDateString("he-IL");
+    return parsed.date.toLocaleString("he-IL", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  }
+
+  static _parseDateInput(value) {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return { date: value, raw: value.toISOString() };
+    }
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    if (!SharePointLookupService._looksLikeIsoDate(trimmed)) return null;
+    const ms = Date.parse(trimmed);
+    if (Number.isNaN(ms)) return null;
+    return { date: new Date(ms), raw: trimmed };
+  }
+
+  static _isLocalMidnight(date) {
+    return date.getHours() === 0
+      && date.getMinutes() === 0
+      && date.getSeconds() === 0
+      && date.getMilliseconds() === 0;
   }
 
   static _looksLikeIsoDate(value) {
@@ -699,12 +793,25 @@ class SharePointLookupService {
 
   // Resolves a field value, falling back to a fuzzy key match when SharePoint renamed the internal name.
   _readField(item, internalName) {
-    return this._normalizeValue(this._resolveItemValue(item, internalName));
+    const raw = this._resolveItemValue(item, internalName);
+    const normalized = this._normalizeValue(raw);
+    return this._resolveLookupLabel(internalName, normalized, raw);
   }
 
   _resolveItemValue(item, internalName) {
     if (!item || !internalName) return undefined;
-    if (item[internalName] !== undefined) return item[internalName];
+    const field = this._fieldsByInternal?.get(internalName);
+    const entity = field?.EntityPropertyName || internalName;
+    for (const key of [entity, internalName]) {
+      if (!key || item[key] === undefined || item[key] === null) continue;
+      const value = item[key];
+      if (typeof value === "object") return value;
+      if (typeof value === "string" && value.trim()) return value;
+      if (typeof value === "number" && !SharePointLookupService.isLookupType(field)) return value;
+    }
+    for (const key of this._lookupIdKeys(internalName, entity)) {
+      if (item[key] !== undefined && item[key] !== null) return item[key];
+    }
     const lower = internalName.toLowerCase();
     const altKey = Object.keys(item).find(
       (k) => k.toLowerCase().includes(lower) || lower.includes(k.toLowerCase())
@@ -712,9 +819,60 @@ class SharePointLookupService {
     return altKey ? item[altKey] : undefined;
   }
 
+  _lookupIdKeys(internalName, entity) {
+    const keys = [];
+    const seen = new Set();
+    const add = (base) => {
+      if (!base) return;
+      const key = `${base}Id`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        keys.push(key);
+      }
+    };
+    [internalName, entity].forEach((base) => {
+      if (/Text$/i.test(base)) add(base.replace(/Text$/i, ""));
+      add(base);
+    });
+    return keys;
+  }
+
+  _resolveLookupLabel(internalName, value, raw) {
+    const field = this._fieldsByInternal?.get(internalName);
+    if (!field || !SharePointLookupService.isLookupType(field)) return value;
+    if (typeof value === "string" && value.trim() && !/^\d+$/.test(value.trim())) return value;
+    const cache = this._lookupLabelCache.get(internalName);
+    if (!cache) return value;
+    const ids = this._lookupIdsFrom(raw ?? value);
+    if (!ids.length) return value;
+    const labels = ids.map((id) => cache.get(String(id)) || "").filter(Boolean);
+    return labels.length ? labels.join(", ") : value;
+  }
+
+  _lookupIdsFrom(value) {
+    if (value == null || value === "") return [];
+    if (Array.isArray(value)) return value.map((entry) => this._lookupIdFrom(entry)).filter((id) => id != null);
+    const id = this._lookupIdFrom(value);
+    return id == null ? [] : [id];
+  }
+
+  _lookupIdFrom(value) {
+    if (value == null || value === "") return null;
+    if (typeof value === "object") return value.Id ?? value.ID ?? value.LookupId ?? null;
+    if (typeof value === "string" && value.includes(";#")) {
+      const first = value.split(";#")[0];
+      return /^\d+$/.test(first) ? Number(first) : null;
+    }
+    return value;
+  }
+
   // Flattens lookup / person / multi-value fields to plain text like the SharePoint console snippet.
   _normalizeValue(value) {
     if (value === null || value === undefined) return "";
+    if (typeof value === "string") {
+      const spLookup = SharePointLookupService.formatSpLookupString(value);
+      if (spLookup) return spLookup;
+    }
     if (Array.isArray(value)) {
       return value.map((v) => this._scalarValue(v)).filter((v) => v !== "").join(", ");
     }
@@ -724,8 +882,12 @@ class SharePointLookupService {
 
   _scalarValue(v) {
     if (v === null || v === undefined) return "";
+    if (typeof v === "string") {
+      const spLookup = SharePointLookupService.formatSpLookupString(v);
+      if (spLookup) return spLookup;
+    }
     if (typeof v === "object") {
-      return v.Title ?? v.LookupValue ?? v.Name ?? v.Email ?? v.Value ?? v.Label ?? "";
+      return v.LookupValue ?? v.Title ?? v.Name ?? v.Email ?? v.Value ?? v.Label ?? "";
     }
     return v;
   }

@@ -26,6 +26,7 @@ class RelatedListService {
       }))
       .filter((f) => f.internal)
       .sort((a, b) => String(a.title).localeCompare(String(b.title), "he"));
+    await this.service.warmLookupCaches(this.fields);
     return this.fields;
   }
 

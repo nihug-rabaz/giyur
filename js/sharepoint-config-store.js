@@ -1,3 +1,36 @@
+class TemplateConfig {
+  static normalize(entry = {}) {
+    const legacy = (entry.path || "").trim();
+    return {
+      name: entry.name || "",
+      printPath: (entry.printPath || legacy).trim(),
+      exportPath: (entry.exportPath || legacy).trim(),
+    };
+  }
+
+  static resolvePath(template, outputMode) {
+    if (!template) return "";
+    const isPrint = outputMode === "browserPrint";
+    const chosen = isPrint ? template.printPath : template.exportPath;
+    return (chosen || template.path || "").trim();
+  }
+
+  static hasAnyPath(template) {
+    return Boolean(this.resolvePath(template, "browserPrint") || this.resolvePath(template, "download"));
+  }
+
+  static actionItems(template) {
+    const items = [];
+    if (this.resolvePath(template, "browserPrint")) {
+      items.push({ label: "הדפסה", value: "browserPrint", variant: "" });
+    }
+    if (this.resolvePath(template, "download")) {
+      items.push({ label: "ייצוא ל-Word", value: "download", variant: "export" });
+    }
+    return items;
+  }
+}
+
 class SharePointConfigStore {
   static KEY = "sharepointConfig";
 
@@ -36,6 +69,7 @@ class SharePointConfigStore {
       [`${prefix}Templates`]: [],
       [`${prefix}LocationFieldInternal`]: "",
       [`${prefix}JudgeFieldInternal`]: "",
+      [`${prefix}SummonedFieldInternal`]: "",
       [`${prefix}TemplateFieldMap`]: {},
     };
   }
@@ -84,6 +118,7 @@ class SharePointConfigStore {
       templates: this.normalizeTemplates(c[`${prefix}Templates`]),
       locationField: c[`${prefix}LocationFieldInternal`] || "",
       judgeField: c[`${prefix}JudgeFieldInternal`] || "",
+      summonedField: c[`${prefix}SummonedFieldInternal`] || "",
       templateFieldMap: this.normalizeTemplateFieldMap(c[`${prefix}TemplateFieldMap`]),
     };
   }
@@ -130,31 +165,33 @@ class SharePointConfigStore {
     return out;
   }
 
-  // Flat print templates (buttons without tabs): [{ name, path }].
   static normalizeTemplates(templates) {
     return (templates || [])
-      .map((t) => ({ name: t.name || "", path: t.path || "" }))
-      .filter((t) => t.path);
+      .map((t) => TemplateConfig.normalize(t))
+      .filter((t) => TemplateConfig.hasAnyPath(t));
   }
 
   static normalizeItemPrintTemplates(templates) {
     return (templates || [])
-      .map((t, index) => ({
-        id: t.id || `tpl_${index}`,
-        name: t.name || "",
-        path: t.path || "",
-        templateFieldMap: this.normalizeTemplateFieldMap(t.templateFieldMap),
-      }))
-      .filter((t) => t.path);
+      .map((t, index) => {
+        const entry = TemplateConfig.normalize(t);
+        return {
+          id: t.id || `tpl_${index}`,
+          name: entry.name,
+          printPath: entry.printPath,
+          exportPath: entry.exportPath,
+          templateFieldMap: this.normalizeTemplateFieldMap(t.templateFieldMap),
+        };
+      })
+      .filter((t) => TemplateConfig.hasAnyPath(t));
   }
 
-  // Normalizes summons types to { name, templates: [{ name, path }] }, upgrading the old single-path shape.
   static normalizeTypes(types) {
     return (types || []).map((t) => ({
       name: t.name || "",
       templates: Array.isArray(t.templates) && t.templates.length
-        ? t.templates.map((x) => ({ name: x.name || "", path: x.path || "" })).filter((x) => x.path)
-        : (t.templatePath ? [{ name: "", path: t.templatePath }] : []),
+        ? t.templates.map((x) => TemplateConfig.normalize(x)).filter((x) => TemplateConfig.hasAnyPath(x))
+        : (t.templatePath ? [TemplateConfig.normalize({ path: t.templatePath })] : []),
     }));
   }
 
@@ -173,3 +210,4 @@ class SharePointConfigStore {
 }
 
 window.SharePointConfigStore = SharePointConfigStore;
+window.TemplateConfig = TemplateConfig;

@@ -300,6 +300,13 @@ class RelatedListEditor {
     this.container.append(this._heading("שדה אב״ד לדוח Word (לא חובה)", true));
     this.container.append(this._para('בחר את השדה שמכיל את שם אב״ד. בדוח Word תיווצר טבלה נפרדת לכל שילוב של יום, אב״ד ומיקום הזימון. אם הטבלה ארוכה — Word ימשיך אותה בעמוד הבא.'));
     this.container.append(this.judgeFieldEl);
+
+    if (this.labels.showSummonedField) {
+      this.summonedFieldEl = this._select();
+      this.container.append(this._heading('שדה "האם זומן" (לא חובה)', true));
+      this.container.append(this._para('בחר עמודת כן/לא. פריטים עם ערך "לא" לא ייכללו בדוח Word ובהדפסה, אלא אם המשתמש יבחר לכלול אותם במסך הזימונים.'));
+      this.container.append(this.summonedFieldEl);
+    }
   }
 
   _buildTemplateFieldMapSection() {
@@ -338,7 +345,7 @@ class RelatedListEditor {
   // Flat templates: each is just a print button (no tabs, no Choice column).
   _buildTemplatesSection() {
     this.container.append(this._heading(this.labels.templatesTitle || "תבניות הדפסה (כפתורים)", true));
-    this.container.append(this._para(this.labels.templatesIntro || "כל תבנית תופיע ככפתור הדפסה. בחר איזו תבנית להדפיס לכל מי שמופיע בטבלה."));
+    this.container.append(this._para(this.labels.templatesIntro || "כל תבנית תופיע ככפתור. הגדר קובץ נפרד להדפסה ולייצוא Word — אפשר להשאיר רק אחד מהם."));
     this.flatTemplatesEl = document.createElement("div");
     this.flatTemplatesEl.className = "type-templates";
     const addFlatBtn = this._btn("+ הוסף תבנית");
@@ -353,6 +360,9 @@ class RelatedListEditor {
     this.host._populateSelect(this.lookupFieldEl, raw[this._key("LookupFieldInternal")], this.fields);
     this.host._populateSelect(this.locationFieldEl, raw[this._key("LocationFieldInternal")], this.fields);
     this.host._populateSelect(this.judgeFieldEl, raw[this._key("JudgeFieldInternal")], this.fields);
+    if (this.summonedFieldEl) {
+      this.host._populateSelect(this.summonedFieldEl, raw[this._key("SummonedFieldInternal")], this.fields);
+    }
     this.columnLayoutPicker.setListFields(this.fields);
     this.columnLayoutPicker.setBaseFields(this.host.getBaseFields());
     this.columnLayoutPicker.setLayout(SharePointConfigStore.resolveColumnLayout(raw, this.prefix));
@@ -391,6 +401,7 @@ class RelatedListEditor {
       [this._key("Templates")]: this.useTypeTabs ? [] : this._collectTemplates(),
       [this._key("LocationFieldInternal")]: this.locationFieldEl.value,
       [this._key("JudgeFieldInternal")]: this.judgeFieldEl.value,
+      ...(this.summonedFieldEl ? { [this._key("SummonedFieldInternal")]: this.summonedFieldEl.value } : {}),
       [this._key("TemplateFieldMap")]: this._collectTemplateFieldMap(),
     };
   }
@@ -407,9 +418,9 @@ class RelatedListEditor {
     this._setInfo(this.fieldsInfoEl, "טוען שדות...");
     try {
       this.fields = await this.host._loadFieldList(siteUrl, listTitle);
-      [this.dateFieldEl, this.lookupFieldEl, this.typeFieldEl, this.locationFieldEl, this.judgeFieldEl]
-        .filter(Boolean)
-        .forEach((sel) => this.host._populateSelect(sel, sel.value, this.fields));
+      const selects = [this.dateFieldEl, this.lookupFieldEl, this.typeFieldEl, this.locationFieldEl, this.judgeFieldEl];
+      if (this.summonedFieldEl) selects.push(this.summonedFieldEl);
+      selects.filter(Boolean).forEach((sel) => this.host._populateSelect(sel, sel.value, this.fields));
       this.columnLayoutPicker.setListFields(this.fields);
       this._refreshTemplateFieldRows();
       this._setInfo(this.fieldsInfoEl, `נטענו ${this.fields.length} שדות`);
@@ -442,7 +453,9 @@ class RelatedListEditor {
 
   // A type card: a Choice value plus one or more Word templates used when printing it.
   _addTypeCard(type = {}) {
-    const templates = type.templates?.length ? type.templates : [{ name: "", path: type.templatePath || "" }];
+    const templates = type.templates?.length
+      ? type.templates
+      : [{ name: "", printPath: type.templatePath || "", exportPath: type.templatePath || "" }];
     const card = document.createElement("div");
     card.className = "type-card";
 
@@ -471,8 +484,9 @@ class RelatedListEditor {
     const row = document.createElement("div");
     row.className = "field-row tmpl-row";
     const nameInput = this._input("field-input tmpl-name", "שם התבנית (לכפתור)", template.name || "");
-    const pathInput = this._input("field-input tmpl-path", "templates/...docx", template.path || "");
-    row.append(nameInput, pathInput, this.host._removeBtn(row));
+    const printPathInput = this._input("field-input tmpl-print-path", "תבנית להדפסה (.docx)", template.printPath || template.path || "");
+    const exportPathInput = this._input("field-input tmpl-export-path", "תבנית לייצוא Word (.docx)", template.exportPath || template.path || "");
+    row.append(nameInput, printPathInput, exportPathInput, this.host._removeBtn(row));
     return row;
   }
 
@@ -520,8 +534,9 @@ class RelatedListEditor {
       const templates = [];
       card.querySelectorAll(".tmpl-row").forEach((row) => {
         const tName = row.querySelector(".tmpl-name").value.trim();
-        const path = row.querySelector(".tmpl-path").value.trim();
-        if (path) templates.push({ name: tName, path });
+        const printPath = row.querySelector(".tmpl-print-path").value.trim();
+        const exportPath = row.querySelector(".tmpl-export-path").value.trim();
+        if (printPath || exportPath) templates.push({ name: tName, printPath, exportPath });
       });
       types.push({ name, templates });
     });
@@ -532,8 +547,9 @@ class RelatedListEditor {
     const templates = [];
     this.flatTemplatesEl.querySelectorAll(".tmpl-row").forEach((row) => {
       const name = row.querySelector(".tmpl-name").value.trim();
-      const path = row.querySelector(".tmpl-path").value.trim();
-      if (path) templates.push({ name, path });
+      const printPath = row.querySelector(".tmpl-print-path").value.trim();
+      const exportPath = row.querySelector(".tmpl-export-path").value.trim();
+      if (printPath || exportPath) templates.push({ name, printPath, exportPath });
     });
     return templates;
   }
@@ -625,7 +641,7 @@ class ItemPrintTemplatesEditor {
     const intro = document.createElement("p");
     intro.className = "mapping-empty";
     intro.style.marginBottom = "10px";
-    intro.textContent = "הוסף תבניות שיופיעו בתפריט בעת בחירת תיק — לצד זימונים וישיבות. לחיצה על תבנית תפתח ישירות את חלון ההדפסה/ייצוא, ללא מעבר לרשימה מקושרת. קשר תגי Word לשדות מרשימת הבסיס או לשדות מערכת.";
+    intro.textContent = "הוסף תבניות שיופיעו בתפריט בעת בחירת תיק. לכל תבנית הגדר קובץ Word נפרד להדפסה ולייצוא. קשר תגי Word לשדות מרשימת הבסיס או לשדות מערכת.";
     this.templatesEl = document.createElement("div");
     this.templatesEl.style.marginTop = "10px";
     const addBtn = document.createElement("button");
@@ -658,10 +674,11 @@ class ItemPrintTemplatesEditor {
     card.dataset.id = template.id || `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
     const nameInput = this.host._input("field-input tpl-menu-name", "שם בתפריט", template.name || "");
-    const pathInput = this.host._input("field-input tpl-path", "templates/...docx", template.path || "");
+    const printPathInput = this.host._input("field-input tpl-print-path", "תבנית להדפסה (.docx)", template.printPath || template.path || "");
+    const exportPathInput = this.host._input("field-input tpl-export-path", "תבנית לייצוא Word (.docx)", template.exportPath || template.path || "");
     const topRow = document.createElement("div");
     topRow.className = "field-row tmpl-row";
-    topRow.append(nameInput, pathInput);
+    topRow.append(nameInput, printPathInput, exportPathInput);
 
     const mapTitle = document.createElement("p");
     mapTitle.className = "mapping-empty";
@@ -731,8 +748,9 @@ class ItemPrintTemplatesEditor {
   _collectTemplates() {
     const templates = [];
     this.templatesEl.querySelectorAll(".type-card").forEach((card) => {
-      const path = card.querySelector(".tpl-path").value.trim();
-      if (!path) return;
+      const printPath = card.querySelector(".tpl-print-path")?.value.trim() || "";
+      const exportPath = card.querySelector(".tpl-export-path")?.value.trim() || "";
+      if (!printPath && !exportPath) return;
       const name = card.querySelector(".tpl-menu-name").value.trim();
       const id = card.dataset.id || `tpl_${templates.length}`;
       const templateFieldMap = {};
@@ -743,7 +761,7 @@ class ItemPrintTemplatesEditor {
         if (!tag || !internal) return;
         templateFieldMap[tag] = source === "system" ? { source: "system", internal } : { source: "base", internal };
       });
-      templates.push({ id, name, path, templateFieldMap });
+      templates.push({ id, name, printPath, exportPath, templateFieldMap });
     });
     return templates;
   }
@@ -781,6 +799,7 @@ class AdminConfigPage {
         typeTitle: "סוגי זימון ותבניות (טאבים במסך הזימונים)",
         typeIntro: 'בחר את עמודת "סוג זימון" (מסוג אפשרות), טען את האפשרויות, וקשר לכל סוג תבנית אחת או יותר. כל סוג יופיע כטאב, ולכל תבנית יופיע כפתור הדפסה.',
         typeFieldLabel: "עמודת סוג הזימון (Choice)",
+        showSummonedField: true,
       }, this),
       new RelatedListEditor(document.getElementById("sessionsEditor"), "sessions", {
         title: "רשימת ישיבות בית דין (רשימה משנית)",

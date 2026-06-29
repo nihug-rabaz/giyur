@@ -72,7 +72,8 @@ class ItemRow {
       this.item = item || null;
       this.page.columns.forEach((c) => {
         const raw = item ? this.page.lookup.valueOf(item, c.internal) : "";
-        const value = SharePointLookupService.formatValue(raw);
+        const fieldMeta = this.page.lookup.fields.find((f) => f.internal === c.internal);
+        const value = SharePointLookupService.formatValue(raw, SharePointLookupService.formatOptionsForField(fieldMeta));
         this.values[c.tag] = value;
         this.inputs[c.tag].value = value;
       });
